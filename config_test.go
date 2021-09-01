@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"time"
 
-	mocklogging "github.com/lucas-clemente/quic-go/internal/mocks/logging"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
+	mocklogging "github.com/iafoosball/quic-go/internal/mocks/logging"
+	"github.com/iafoosball/quic-go/internal/protocol"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -74,6 +74,8 @@ var _ = Describe("Config", func() {
 			case "KeepAlive":
 				f.Set(reflect.ValueOf(true))
 			case "EnableDatagrams":
+				f.Set(reflect.ValueOf(true))
+			case "DisableVersionNegotiationPackets":
 				f.Set(reflect.ValueOf(true))
 			case "DisablePathMTUDiscovery":
 				f.Set(reflect.ValueOf(true))
@@ -152,6 +154,7 @@ var _ = Describe("Config", func() {
 			Expect(c.MaxConnectionReceiveWindow).To(BeEquivalentTo(protocol.DefaultMaxReceiveConnectionFlowControlWindow))
 			Expect(c.MaxIncomingStreams).To(BeEquivalentTo(protocol.DefaultMaxIncomingStreams))
 			Expect(c.MaxIncomingUniStreams).To(BeEquivalentTo(protocol.DefaultMaxIncomingUniStreams))
+			Expect(c.DisableVersionNegotiationPackets).To(BeFalse())
 			Expect(c.DisablePathMTUDiscovery).To(BeFalse())
 		})
 

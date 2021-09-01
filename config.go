@@ -4,9 +4,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/lucas-clemente/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/internal/utils"
 
-	"github.com/lucas-clemente/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/protocol"
 )
 
 // Clone clones a Config
@@ -101,22 +101,23 @@ func populateConfig(config *Config) *Config {
 	}
 
 	return &Config{
-		Versions:                       versions,
-		HandshakeIdleTimeout:           handshakeIdleTimeout,
-		MaxIdleTimeout:                 idleTimeout,
-		AcceptToken:                    config.AcceptToken,
-		KeepAlive:                      config.KeepAlive,
-		InitialStreamReceiveWindow:     initialStreamReceiveWindow,
-		MaxStreamReceiveWindow:         maxStreamReceiveWindow,
-		InitialConnectionReceiveWindow: initialConnectionReceiveWindow,
-		MaxConnectionReceiveWindow:     maxConnectionReceiveWindow,
-		MaxIncomingStreams:             maxIncomingStreams,
-		MaxIncomingUniStreams:          maxIncomingUniStreams,
-		ConnectionIDLength:             config.ConnectionIDLength,
-		StatelessResetKey:              config.StatelessResetKey,
-		TokenStore:                     config.TokenStore,
-		EnableDatagrams:                config.EnableDatagrams,
-		DisablePathMTUDiscovery:        config.DisablePathMTUDiscovery,
-		Tracer:                         config.Tracer,
+		Versions:                         versions,
+		HandshakeIdleTimeout:             handshakeIdleTimeout,
+		MaxIdleTimeout:                   idleTimeout,
+		AcceptToken:                      config.AcceptToken,
+		KeepAlive:                        config.KeepAlive,
+		InitialStreamReceiveWindow:       initialStreamReceiveWindow,
+		MaxStreamReceiveWindow:           maxStreamReceiveWindow,
+		InitialConnectionReceiveWindow:   initialConnectionReceiveWindow,
+		MaxConnectionReceiveWindow:       maxConnectionReceiveWindow,
+		MaxIncomingStreams:               maxIncomingStreams,
+		MaxIncomingUniStreams:            maxIncomingUniStreams,
+		ConnectionIDLength:               config.ConnectionIDLength,
+		StatelessResetKey:                config.StatelessResetKey,
+		TokenStore:                       config.TokenStore,
+		EnableDatagrams:                  config.EnableDatagrams,
+		DisablePathMTUDiscovery:          config.DisablePathMTUDiscovery,
+		DisableVersionNegotiationPackets: config.DisableVersionNegotiationPackets,
+		Tracer:                           config.Tracer,
 	}
 }

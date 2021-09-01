@@ -12,12 +12,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lucas-clemente/quic-go/internal/handshake"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/qerr"
-	"github.com/lucas-clemente/quic-go/internal/utils"
-	"github.com/lucas-clemente/quic-go/internal/wire"
-	"github.com/lucas-clemente/quic-go/logging"
+	"github.com/iafoosball/quic-go/internal/handshake"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/qerr"
+	"github.com/iafoosball/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/internal/wire"
+	"github.com/iafoosball/quic-go/logging"
 )
 
 // packetHandler handles packets
@@ -366,7 +366,9 @@ func (s *baseServer) handlePacketImpl(p *receivedPacket) bool /* is the buffer s
 			}
 			return false
 		}
-		go s.sendVersionNegotiationPacket(p, hdr)
+		if !s.config.DisableVersionNegotiationPackets {
+			go s.sendVersionNegotiationPacket(p, hdr)
+		}
 		return false
 	}
 	if hdr.IsLongHeader && hdr.Type != protocol.PacketTypeInitial {

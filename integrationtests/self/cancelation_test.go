@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
+	"github.com/iafoosball/quic-go"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -25,7 +24,8 @@ var _ = Describe("Stream Cancelations", func() {
 
 		// The server accepts a single session, and then opens numStreams unidirectional streams.
 		// On each of these streams, it (tries to) write PRData.
-		runServer := func() <-chan int32 {
+		// When done, it sends the number of canceled streams on the channel.
+		runServer := func(data []byte) <-chan int32 {
 			numCanceledStreamsChan := make(chan int32)
 			var err error
 			server, err = quic.ListenAddr("localhost:0", getTLSConfig(), getQuicConfig(nil))
@@ -44,7 +44,7 @@ var _ = Describe("Stream Cancelations", func() {
 						defer wg.Done()
 						str, err := sess.OpenUniStreamSync(context.Background())
 						Expect(err).ToNot(HaveOccurred())
-						if _, err := str.Write(PRData); err != nil {
+						if _, err := str.Write(data); err != nil {
 							Expect(err).To(MatchError(&quic.StreamError{
 								StreamID:  str.StreamID(),
 								ErrorCode: quic.StreamErrorCode(str.StreamID()),
@@ -70,7 +70,7 @@ var _ = Describe("Stream Cancelations", func() {
 		})
 
 		It("downloads when the client immediately cancels most streams", func() {
-			serverCanceledCounterChan := runServer()
+			serverCanceledCounterChan := runServer(PRData)
 			sess, err := quic.DialAddr(
 				fmt.Sprintf("localhost:%d", server.Addr().(*net.UDPAddr).Port),
 				getTLSClientConfig(),
@@ -93,7 +93,7 @@ var _ = Describe("Stream Cancelations", func() {
 						str.CancelRead(quic.StreamErrorCode(str.StreamID()))
 						return
 					}
-					data, err := ioutil.ReadAll(str)
+					data, err := io.ReadAll(str)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(data).To(Equal(PRData))
 				}()
@@ -113,7 +113,7 @@ var _ = Describe("Stream Cancelations", func() {
 		})
 
 		It("downloads when the client cancels streams after reading from them for a bit", func() {
-			serverCanceledCounterChan := runServer()
+			serverCanceledCounterChan := runServer(PRData)
 
 			sess, err := quic.DialAddr(
 				fmt.Sprintf("localhost:%d", server.Addr().(*net.UDPAddr).Port),
@@ -134,14 +134,14 @@ var _ = Describe("Stream Cancelations", func() {
 					// only read some data from about 1/3 of the streams
 					if rand.Int31()%3 != 0 {
 						length := int(rand.Int31n(int32(len(PRData) - 1)))
-						data, err := ioutil.ReadAll(io.LimitReader(str, int64(length)))
+						data, err := io.ReadAll(io.LimitReader(str, int64(length)))
 						Expect(err).ToNot(HaveOccurred())
 						str.CancelRead(quic.StreamErrorCode(str.StreamID()))
 						Expect(data).To(Equal(PRData[:length]))
 						atomic.AddInt32(&canceledCounter, 1)
 						return
 					}
-					data, err := ioutil.ReadAll(str)
+					data, err := io.ReadAll(str)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(data).To(Equal(PRData))
 				}()
@@ -158,6 +158,51 @@ var _ = Describe("Stream Cancelations", func() {
 			fmt.Fprintf(GinkgoWriter, "Canceled reading on %d of %d streams.\n", clientCanceledCounter, numStreams)
 			Expect(clientCanceledCounter).To(BeNumerically(">", numStreams/10))
 			Expect(numStreams - clientCanceledCounter).To(BeNumerically(">", numStreams/10))
+		})
+
+		It("allows concurrent Read and CancelRead calls", func() {
+			// This test is especially valuable when run with race detector,
+			// see https://github.com/iafoosball/quic-go/issues/3239.
+			serverCanceledCounterChan := runServer(make([]byte, 100)) // make sure the FIN is sent with the STREAM frame
+
+			sess, err := quic.DialAddr(
+				fmt.Sprintf("localhost:%d", server.Addr().(*net.UDPAddr).Port),
+				getTLSClientConfig(),
+				getQuicConfig(&quic.Config{MaxIncomingUniStreams: numStreams / 2}),
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			var wg sync.WaitGroup
+			wg.Add(numStreams)
+			var counter int32
+			for i := 0; i < numStreams; i++ {
+				go func() {
+					defer GinkgoRecover()
+					defer wg.Done()
+					str, err := sess.AcceptUniStream(context.Background())
+					Expect(err).ToNot(HaveOccurred())
+
+					done := make(chan struct{})
+					go func() {
+						defer GinkgoRecover()
+						defer close(done)
+						b := make([]byte, 32)
+						if _, err := str.Read(b); err != nil {
+							atomic.AddInt32(&counter, 1)
+							Expect(err.Error()).To(ContainSubstring("canceled with error code 1234"))
+							return
+						}
+					}()
+					go str.CancelRead(1234)
+					Eventually(done).Should(BeClosed())
+				}()
+			}
+			wg.Wait()
+			Expect(sess.CloseWithError(0, "")).To(Succeed())
+			numCanceled := atomic.LoadInt32(&counter)
+			fmt.Fprintf(GinkgoWriter, "canceled %d out of %d streams", numCanceled, numStreams)
+			Expect(numCanceled).ToNot(BeZero())
+			Eventually(serverCanceledCounterChan).Should(Receive())
 		})
 	})
 
@@ -179,7 +224,7 @@ var _ = Describe("Stream Cancelations", func() {
 					defer wg.Done()
 					str, err := sess.AcceptUniStream(context.Background())
 					Expect(err).ToNot(HaveOccurred())
-					data, err := ioutil.ReadAll(str)
+					data, err := io.ReadAll(str)
 					if err != nil {
 						atomic.AddInt32(&counter, 1)
 						Expect(err).To(MatchError(&quic.StreamError{
@@ -329,7 +374,7 @@ var _ = Describe("Stream Cancelations", func() {
 						str.CancelRead(quic.StreamErrorCode(str.StreamID()))
 						return
 					}
-					data, err := ioutil.ReadAll(str)
+					data, err := io.ReadAll(str)
 					if err != nil {
 						Expect(err).To(MatchError(&quic.StreamError{
 							StreamID:  str.StreamID(),
@@ -418,7 +463,7 @@ var _ = Describe("Stream Cancelations", func() {
 						length = int(rand.Int31n(int32(len(PRData) - 1)))
 						r = io.LimitReader(str, int64(length))
 					}
-					data, err := ioutil.ReadAll(r)
+					data, err := io.ReadAll(r)
 					if err != nil {
 						Expect(err).To(MatchError(&quic.StreamError{
 							StreamID:  str.StreamID(),
@@ -501,7 +546,7 @@ var _ = Describe("Stream Cancelations", func() {
 						}
 						return
 					}
-					data, err := ioutil.ReadAll(str)
+					data, err := io.ReadAll(str)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(data).To(Equal(PRData))
 					wg.Done()
@@ -571,7 +616,7 @@ var _ = Describe("Stream Cancelations", func() {
 				Expect(err).ToNot(HaveOccurred())
 				go func(str quic.ReceiveStream) {
 					defer GinkgoRecover()
-					data, err := ioutil.ReadAll(str)
+					data, err := io.ReadAll(str)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(data).To(Equal(PRData))
 					wg.Done()

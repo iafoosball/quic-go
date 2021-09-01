@@ -3,13 +3,13 @@ package self_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"runtime"
 	"time"
 
-	quic "github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
+	quic "github.com/iafoosball/quic-go"
+	"github.com/iafoosball/quic-go/internal/protocol"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -52,7 +52,7 @@ var _ = Describe("Multiplexing", func() {
 				defer sess.CloseWithError(0, "")
 				str, err := sess.AcceptStream(context.Background())
 				Expect(err).ToNot(HaveOccurred())
-				data, err := ioutil.ReadAll(str)
+				data, err := io.ReadAll(str)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(data).To(Equal(PRData))
 			}

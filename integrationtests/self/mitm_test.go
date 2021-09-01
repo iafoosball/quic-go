@@ -5,18 +5,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	mrand "math/rand"
 	"net"
 	"sync/atomic"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
-	quicproxy "github.com/lucas-clemente/quic-go/integrationtests/tools/proxy"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/testutils"
-	"github.com/lucas-clemente/quic-go/internal/wire"
+	"github.com/iafoosball/quic-go"
+	quicproxy "github.com/iafoosball/quic-go/integrationtests/tools/proxy"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/testutils"
+	"github.com/iafoosball/quic-go/internal/wire"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
@@ -136,7 +136,7 @@ var _ = Describe("MITM test", func() {
 						Expect(err).ToNot(HaveOccurred())
 						str, err := sess.AcceptUniStream(context.Background())
 						Expect(err).ToNot(HaveOccurred())
-						data, err := ioutil.ReadAll(str)
+						data, err := io.ReadAll(str)
 						Expect(err).ToNot(HaveOccurred())
 						Expect(data).To(Equal(PRData))
 						Expect(sess.CloseWithError(0, "")).To(Succeed())
@@ -182,7 +182,7 @@ var _ = Describe("MITM test", func() {
 					Expect(err).ToNot(HaveOccurred())
 					str, err := sess.AcceptUniStream(context.Background())
 					Expect(err).ToNot(HaveOccurred())
-					data, err := ioutil.ReadAll(str)
+					data, err := io.ReadAll(str)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(data).To(Equal(PRData))
 					Expect(sess.CloseWithError(0, "")).To(Succeed())
@@ -371,7 +371,8 @@ var _ = Describe("MITM test", func() {
 					}
 					err := runTest(delayCb)
 					Expect(err).To(HaveOccurred())
-					Expect(err).To(MatchError(&quic.VersionNegotiationError{}))
+					vnErr := &quic.VersionNegotiationError{}
+					Expect(errors.As(err, &vnErr)).To(BeTrue())
 				})
 
 				// times out, because client doesn't accept subsequent real retry packets from server

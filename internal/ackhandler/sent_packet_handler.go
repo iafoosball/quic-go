@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lucas-clemente/quic-go/internal/congestion"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/qerr"
-	"github.com/lucas-clemente/quic-go/internal/utils"
-	"github.com/lucas-clemente/quic-go/internal/wire"
-	"github.com/lucas-clemente/quic-go/logging"
+	"github.com/iafoosball/quic-go/internal/congestion"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/qerr"
+	"github.com/iafoosball/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/internal/wire"
+	"github.com/iafoosball/quic-go/logging"
 )
 
 const (
@@ -483,14 +483,13 @@ func (h *sentPacketHandler) getPTOTimeAndSpace() (pto time.Time, encLevel protoc
 }
 
 func (h *sentPacketHandler) hasOutstandingCryptoPackets() bool {
-	var hasInitial, hasHandshake bool
-	if h.initialPackets != nil {
-		hasInitial = h.initialPackets.history.HasOutstandingPackets()
+	if h.initialPackets != nil && h.initialPackets.history.HasOutstandingPackets() {
+		return true
 	}
-	if h.handshakePackets != nil {
-		hasHandshake = h.handshakePackets.history.HasOutstandingPackets()
+	if h.handshakePackets != nil && h.handshakePackets.history.HasOutstandingPackets() {
+		return true
 	}
-	return hasInitial || hasHandshake
+	return false
 }
 
 func (h *sentPacketHandler) hasOutstandingPackets() bool {
@@ -536,6 +535,13 @@ func (h *sentPacketHandler) setLossDetectionTimer() {
 	// PTO alarm
 	ptoTime, encLevel, ok := h.getPTOTimeAndSpace()
 	if !ok {
+		if !oldAlarm.IsZero() {
+			h.alarm = time.Time{}
+			h.logger.Debugf("Canceling loss detection timer. No PTO needed..")
+			if h.tracer != nil {
+				h.tracer.LossTimerCanceled()
+			}
+		}
 		return
 	}
 	h.alarm = ptoTime

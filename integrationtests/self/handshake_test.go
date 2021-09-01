@@ -5,14 +5,14 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/integrationtests/tools/israce"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/logging"
+	"github.com/iafoosball/quic-go"
+	"github.com/iafoosball/quic-go/integrationtests/tools/israce"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/logging"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -216,7 +216,7 @@ var _ = Describe("Handshake tests", func() {
 				Expect(err).ToNot(HaveOccurred())
 				str, err := sess.AcceptStream(context.Background())
 				Expect(err).ToNot(HaveOccurred())
-				data, err := ioutil.ReadAll(str)
+				data, err := io.ReadAll(str)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(data).To(Equal(PRData))
 				Expect(sess.ConnectionState().TLS.CipherSuite).To(Equal(suiteID))

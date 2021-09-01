@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	mrand "math/rand"
 	"net"
 	"runtime/pprof"
@@ -13,10 +12,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
-	quicproxy "github.com/lucas-clemente/quic-go/integrationtests/tools/proxy"
-	"github.com/lucas-clemente/quic-go/internal/utils"
-	"github.com/lucas-clemente/quic-go/logging"
+	"github.com/iafoosball/quic-go"
+	quicproxy "github.com/iafoosball/quic-go/integrationtests/tools/proxy"
+	"github.com/iafoosball/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/logging"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -410,7 +409,7 @@ var _ = Describe("Timeout tests", func() {
 			if err != nil {
 				return err
 			}
-			data, err := ioutil.ReadAll(str)
+			data, err := io.ReadAll(str)
 			if err != nil {
 				return err
 			}

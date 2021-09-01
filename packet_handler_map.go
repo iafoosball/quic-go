@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/utils"
-	"github.com/lucas-clemente/quic-go/internal/wire"
-	"github.com/lucas-clemente/quic-go/logging"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/internal/wire"
+	"github.com/iafoosball/quic-go/logging"
 )
 
 type zeroRTTQueue struct {
@@ -122,7 +122,7 @@ func newPacketHandlerMap(
 ) (packetHandlerManager, error) {
 	if err := setReceiveBuffer(c, logger); err != nil {
 		receiveBufferWarningOnce.Do(func() {
-			log.Printf("%s. See https://github.com/lucas-clemente/quic-go/wiki/UDP-Receive-Buffer-Size for details.", err)
+			log.Printf("%s. See https://github.com/iafoosball/quic-go/wiki/UDP-Receive-Buffer-Size for details.", err)
 		})
 	}
 	conn, err := wrapConn(c)

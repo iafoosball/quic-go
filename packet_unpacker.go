@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lucas-clemente/quic-go/internal/handshake"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/wire"
+	"github.com/iafoosball/quic-go/internal/handshake"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/wire"
 )
 
 type headerDecryptor interface {
@@ -16,11 +16,6 @@ type headerDecryptor interface {
 
 type headerParseError struct {
 	err error
-}
-
-func (e *headerParseError) Is(err error) bool {
-	_, ok := err.(*headerParseError)
-	return ok
 }
 
 func (e *headerParseError) Unwrap() error {

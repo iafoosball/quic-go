@@ -5,11 +5,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/lucas-clemente/quic-go/internal/handshake"
-	"github.com/lucas-clemente/quic-go/internal/mocks"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/qerr"
-	"github.com/lucas-clemente/quic-go/internal/wire"
+	"github.com/iafoosball/quic-go/internal/handshake"
+	"github.com/iafoosball/quic-go/internal/mocks"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/qerr"
+	"github.com/iafoosball/quic-go/internal/wire"
 
 	"github.com/golang/mock/gomock"
 
@@ -60,7 +60,7 @@ var _ = Describe("Packet Unpacker", func() {
 		opener := mocks.NewMockLongHeaderOpener(mockCtrl)
 		cs.EXPECT().GetHandshakeOpener().Return(opener, nil)
 		_, err := unpacker.Unpack(hdr, time.Now(), data)
-		Expect(errors.Is(err, &headerParseError{})).To(BeTrue())
+		Expect(err).To(BeAssignableToTypeOf(&headerParseError{}))
 		var headerErr *headerParseError
 		Expect(errors.As(err, &headerErr)).To(BeTrue())
 		Expect(err).To(MatchError("Packet too small. Expected at least 20 bytes after the header, got 19"))
@@ -77,9 +77,7 @@ var _ = Describe("Packet Unpacker", func() {
 		opener := mocks.NewMockShortHeaderOpener(mockCtrl)
 		cs.EXPECT().Get1RTTOpener().Return(opener, nil)
 		_, err := unpacker.Unpack(hdr, time.Now(), data)
-		Expect(errors.Is(err, &headerParseError{})).To(BeTrue())
-		var headerErr *headerParseError
-		Expect(errors.As(err, &headerErr)).To(BeTrue())
+		Expect(err).To(BeAssignableToTypeOf(&headerParseError{}))
 		Expect(err).To(MatchError("Packet too small. Expected at least 20 bytes after the header, got 19"))
 	})
 

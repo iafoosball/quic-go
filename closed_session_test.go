@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/utils"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -49,7 +49,7 @@ var _ = Describe("Closed local session", func() {
 	})
 
 	It("destroys sessions", func() {
-		Expect(areClosedSessionsRunning()).To(BeTrue())
+		Eventually(areClosedSessionsRunning).Should(BeTrue())
 		sess.destroy(errors.New("destroy"))
 		Eventually(areClosedSessionsRunning).Should(BeFalse())
 	})

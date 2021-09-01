@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/qerr"
-	"github.com/lucas-clemente/quic-go/internal/qtls"
-	"github.com/lucas-clemente/quic-go/internal/utils"
-	"github.com/lucas-clemente/quic-go/internal/wire"
-	"github.com/lucas-clemente/quic-go/logging"
-	"github.com/lucas-clemente/quic-go/quicvarint"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/qerr"
+	"github.com/iafoosball/quic-go/internal/qtls"
+	"github.com/iafoosball/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/internal/wire"
+	"github.com/iafoosball/quic-go/logging"
+	"github.com/iafoosball/quic-go/quicvarint"
 )
 
 // TLS unexpected_message alert

@@ -2,14 +2,15 @@ package self_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
-	quicproxy "github.com/lucas-clemente/quic-go/integrationtests/tools/proxy"
-	"github.com/lucas-clemente/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go"
+	quicproxy "github.com/iafoosball/quic-go/integrationtests/tools/proxy"
+	"github.com/iafoosball/quic-go/internal/utils"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -99,7 +100,8 @@ var _ = Describe("Stateless Resets", func() {
 				_, serr = str.Read([]byte{0})
 			}
 			Expect(serr).To(HaveOccurred())
-			Expect(serr).To(MatchError(&quic.StatelessResetError{}))
+			statelessResetErr := &quic.StatelessResetError{}
+			Expect(errors.As(serr, &statelessResetErr)).To(BeTrue())
 			Expect(ln2.Close()).To(Succeed())
 			Eventually(acceptStopped).Should(BeClosed())
 		})

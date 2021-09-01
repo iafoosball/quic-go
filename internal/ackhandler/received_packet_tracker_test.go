@@ -3,9 +3,9 @@ package ackhandler
 import (
 	"time"
 
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/utils"
-	"github.com/lucas-clemente/quic-go/internal/wire"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/internal/wire"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -311,15 +311,6 @@ var _ = Describe("Received Packet Tracker", func() {
 					Expect(ack.LargestAcked()).To(Equal(protocol.PacketNumber(12)))
 					Expect(ack.LowestAcked()).To(Equal(protocol.PacketNumber(7)))
 					Expect(ack.HasMissingRanges()).To(BeFalse())
-				})
-
-				// TODO: remove this test when dropping support for STOP_WAITINGs
-				It("handles a lower limit of 0", func() {
-					tracker.IgnoreBelow(0)
-					tracker.ReceivedPacket(1337, protocol.ECNNon, time.Now(), true)
-					ack := tracker.GetAckFrame(true)
-					Expect(ack).ToNot(BeNil())
-					Expect(ack.LargestAcked()).To(Equal(protocol.PacketNumber(1337)))
 				})
 
 				It("resets all counters needed for the ACK queueing decision when sending an ACK", func() {

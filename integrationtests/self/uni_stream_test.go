@@ -3,12 +3,12 @@ package self_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"sync"
 
-	quic "github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
+	quic "github.com/iafoosball/quic-go"
+	"github.com/iafoosball/quic-go/internal/protocol"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -61,7 +61,7 @@ var _ = Describe("Unidirectional Streams", func() {
 			go func() {
 				defer GinkgoRecover()
 				defer wg.Done()
-				data, err := ioutil.ReadAll(str)
+				data, err := io.ReadAll(str)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(data).To(Equal(dataForStream(str.StreamID())))
 			}()

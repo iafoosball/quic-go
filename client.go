@@ -8,9 +8,9 @@ import (
 	"net"
 	"strings"
 
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/utils"
-	"github.com/lucas-clemente/quic-go/logging"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/logging"
 )
 
 type client struct {
@@ -300,7 +300,8 @@ func (c *client) dial(ctx context.Context) error {
 	errorChan := make(chan error, 1)
 	go func() {
 		err := c.session.run() // returns as soon as the session is closed
-		if !errors.Is(err, &errCloseForRecreating{}) && c.createdPacketConn {
+
+		if e := (&errCloseForRecreating{}); !errors.As(err, &e) && c.createdPacketConn {
 			c.packetHandlers.Destroy()
 		}
 		errorChan <- err

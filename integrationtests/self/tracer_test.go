@@ -11,11 +11,11 @@ import (
 	"net"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/utils"
-	"github.com/lucas-clemente/quic-go/logging"
-	"github.com/lucas-clemente/quic-go/qlog"
+	"github.com/iafoosball/quic-go"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/logging"
+	"github.com/iafoosball/quic-go/qlog"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -136,7 +136,7 @@ var _ = Describe("Handshake tests", func() {
 			defer sess.CloseWithError(0, "")
 			str, err := sess.AcceptUniStream(context.Background())
 			Expect(err).ToNot(HaveOccurred())
-			data, err := ioutil.ReadAll(str)
+			data, err := io.ReadAll(str)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(data).To(Equal(PRData))
 		})

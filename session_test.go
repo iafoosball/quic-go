@@ -13,17 +13,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lucas-clemente/quic-go/internal/ackhandler"
-	"github.com/lucas-clemente/quic-go/internal/handshake"
-	"github.com/lucas-clemente/quic-go/internal/mocks"
-	mockackhandler "github.com/lucas-clemente/quic-go/internal/mocks/ackhandler"
-	mocklogging "github.com/lucas-clemente/quic-go/internal/mocks/logging"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/qerr"
-	"github.com/lucas-clemente/quic-go/internal/testutils"
-	"github.com/lucas-clemente/quic-go/internal/utils"
-	"github.com/lucas-clemente/quic-go/internal/wire"
-	"github.com/lucas-clemente/quic-go/logging"
+	"github.com/iafoosball/quic-go/internal/ackhandler"
+	"github.com/iafoosball/quic-go/internal/handshake"
+	"github.com/iafoosball/quic-go/internal/mocks"
+	mockackhandler "github.com/iafoosball/quic-go/internal/mocks/ackhandler"
+	mocklogging "github.com/iafoosball/quic-go/internal/mocks/logging"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/qerr"
+	"github.com/iafoosball/quic-go/internal/testutils"
+	"github.com/iafoosball/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/internal/wire"
+	"github.com/iafoosball/quic-go/logging"
 
 	"github.com/golang/mock/gomock"
 
@@ -2182,7 +2182,7 @@ var _ = Describe("Session", func() {
 			cryptoSetup.EXPECT().Close()
 			gomock.InOrder(
 				tracer.EXPECT().ClosedConnection(gomock.Any()).Do(func(e error) {
-					Expect(errors.Is(e, &IdleTimeoutError{})).To(BeTrue())
+					Expect(e).To(MatchError(&qerr.IdleTimeoutError{}))
 				}),
 				tracer.EXPECT().Close(),
 			)
@@ -2206,7 +2206,7 @@ var _ = Describe("Session", func() {
 			cryptoSetup.EXPECT().Close()
 			gomock.InOrder(
 				tracer.EXPECT().ClosedConnection(gomock.Any()).Do(func(e error) {
-					Expect(errors.Is(e, &HandshakeTimeoutError{})).To(BeTrue())
+					Expect(e).To(MatchError(&HandshakeTimeoutError{}))
 				}),
 				tracer.EXPECT().Close(),
 			)
@@ -2235,8 +2235,10 @@ var _ = Describe("Session", func() {
 			})
 			gomock.InOrder(
 				tracer.EXPECT().ClosedConnection(gomock.Any()).Do(func(e error) {
-					Expect(errors.Is(e, &IdleTimeoutError{})).To(BeFalse())
-					Expect(errors.Is(e, &HandshakeTimeoutError{})).To(BeFalse())
+					idleTimeout := &IdleTimeoutError{}
+					handshakeTimeout := &HandshakeTimeoutError{}
+					Expect(errors.As(e, &idleTimeout)).To(BeFalse())
+					Expect(errors.As(e, &handshakeTimeout)).To(BeFalse())
 				}),
 				tracer.EXPECT().Close(),
 			)
@@ -2263,7 +2265,7 @@ var _ = Describe("Session", func() {
 			cryptoSetup.EXPECT().Close()
 			gomock.InOrder(
 				tracer.EXPECT().ClosedConnection(gomock.Any()).Do(func(e error) {
-					Expect(errors.Is(e, &IdleTimeoutError{})).To(BeTrue())
+					Expect(e).To(MatchError(&IdleTimeoutError{}))
 				}),
 				tracer.EXPECT().Close(),
 			)
@@ -2292,7 +2294,7 @@ var _ = Describe("Session", func() {
 			cryptoSetup.EXPECT().Close()
 			gomock.InOrder(
 				tracer.EXPECT().ClosedConnection(gomock.Any()).Do(func(e error) {
-					Expect(errors.Is(e, &IdleTimeoutError{})).To(BeTrue())
+					Expect(e).To(MatchError(&IdleTimeoutError{}))
 				}),
 				tracer.EXPECT().Close(),
 			)

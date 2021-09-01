@@ -6,11 +6,11 @@ import (
 
 	"github.com/golang/mock/gomock"
 
-	"github.com/lucas-clemente/quic-go/internal/mocks"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/qerr"
-	"github.com/lucas-clemente/quic-go/internal/utils"
-	"github.com/lucas-clemente/quic-go/internal/wire"
+	"github.com/iafoosball/quic-go/internal/mocks"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/qerr"
+	"github.com/iafoosball/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/internal/wire"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -930,6 +930,17 @@ var _ = Describe("SentPacketHandler", func() {
 			Expect(handler.GetLossDetectionTimeout()).To(BeZero())
 			handler.ReceivedPacket(protocol.EncryptionHandshake)
 			Expect(handler.GetLossDetectionTimeout()).ToNot(BeZero())
+		})
+
+		It("cancels the loss detection alarm when all Handshake packets are acknowledged", func() {
+			t := time.Now().Add(-time.Second)
+			handler.ReceivedBytes(99999)
+			handler.SentPacket(ackElicitingPacket(&Packet{PacketNumber: 2, SendTime: t}))
+			handler.SentPacket(handshakePacket(&Packet{PacketNumber: 3, SendTime: t}))
+			handler.SentPacket(handshakePacket(&Packet{PacketNumber: 4, SendTime: t}))
+			Expect(handler.GetLossDetectionTimeout()).ToNot(BeZero())
+			handler.ReceivedAck(&wire.AckFrame{AckRanges: []wire.AckRange{{Smallest: 3, Largest: 4}}}, protocol.EncryptionHandshake, time.Now())
+			Expect(handler.GetLossDetectionTimeout()).To(BeZero())
 		})
 	})
 

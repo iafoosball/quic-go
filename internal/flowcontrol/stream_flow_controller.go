@@ -3,9 +3,9 @@ package flowcontrol
 import (
 	"fmt"
 
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/qerr"
-	"github.com/lucas-clemente/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/qerr"
+	"github.com/iafoosball/quic-go/internal/utils"
 )
 
 type streamFlowController struct {
@@ -109,7 +109,10 @@ func (c *streamFlowController) AddBytesRead(n protocol.ByteCount) {
 }
 
 func (c *streamFlowController) Abandon() {
-	if unread := c.highestReceived - c.bytesRead; unread > 0 {
+	c.mutex.Lock()
+	unread := c.highestReceived - c.bytesRead
+	c.mutex.Unlock()
+	if unread > 0 {
 		c.connection.AddBytesRead(unread)
 	}
 }

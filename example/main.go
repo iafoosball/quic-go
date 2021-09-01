@@ -18,12 +18,12 @@ import (
 
 	_ "net/http/pprof"
 
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/http3"
-	"github.com/lucas-clemente/quic-go/internal/testdata"
-	"github.com/lucas-clemente/quic-go/internal/utils"
-	"github.com/lucas-clemente/quic-go/logging"
-	"github.com/lucas-clemente/quic-go/qlog"
+	"github.com/iafoosball/quic-go"
+	"github.com/iafoosball/quic-go/http3"
+	"github.com/iafoosball/quic-go/internal/testdata"
+	"github.com/iafoosball/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/logging"
+	"github.com/iafoosball/quic-go/qlog"
 )
 
 type binds []string
@@ -121,9 +121,7 @@ func setupHandler(www string) http.Handler {
 					err = errors.New("couldn't get uploaded file size")
 				}
 			}
-			if err != nil {
-				utils.DefaultLogger.Infof("Error receiving upload: %#v", err)
-			}
+			utils.DefaultLogger.Infof("Error receiving upload: %#v", err)
 		}
 		io.WriteString(w, `<html><body><form action="/demo/upload" method="post" enctype="multipart/form-data">
 				<input type="file" name="uploadfile"><br>

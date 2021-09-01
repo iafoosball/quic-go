@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
-	"github.com/lucas-clemente/quic-go"
-	mockquic "github.com/lucas-clemente/quic-go/internal/mocks/quic"
-	"github.com/lucas-clemente/quic-go/quicvarint"
+	"github.com/iafoosball/quic-go"
+	mockquic "github.com/iafoosball/quic-go/internal/mocks/quic"
+	"github.com/iafoosball/quic-go/quicvarint"
 
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/utils"
 	"github.com/marten-seemann/qpack"
 
 	. "github.com/onsi/ginkgo"
@@ -55,7 +55,7 @@ var _ = Describe("Client", func() {
 
 	It("rejects quic.Configs that allow multiple QUIC versions", func() {
 		qconf := &quic.Config{
-			Versions: []quic.VersionNumber{protocol.VersionDraft29, protocol.VersionDraft32},
+			Versions: []quic.VersionNumber{protocol.VersionDraft29, protocol.Version1},
 		}
 		_, err := newClient("localhost:1337", nil, &roundTripperOpts{}, qconf, nil)
 		Expect(err).To(MatchError("can only use a single QUIC version for dialing a HTTP/3 connection"))

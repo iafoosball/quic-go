@@ -15,11 +15,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/internal/handshake"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/utils"
-	"github.com/lucas-clemente/quic-go/quicvarint"
+	"github.com/iafoosball/quic-go"
+	"github.com/iafoosball/quic-go/internal/handshake"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/quicvarint"
 	"github.com/marten-seemann/qpack"
 )
 
@@ -31,8 +31,6 @@ var (
 
 const (
 	nextProtoH3Draft29 = "h3-29"
-	nextProtoH3Draft32 = "h3-32"
-	nextProtoH3Draft34 = "h3-34"
 	nextProtoH3        = "h3"
 )
 
@@ -49,12 +47,6 @@ func versionToALPN(v protocol.VersionNumber) string {
 	}
 	if v == protocol.VersionTLS || v == protocol.VersionDraft29 {
 		return nextProtoH3Draft29
-	}
-	if v == protocol.VersionDraft32 {
-		return nextProtoH3Draft32
-	}
-	if v == protocol.VersionDraft34 {
-		return nextProtoH3Draft34
 	}
 	return ""
 }
@@ -159,13 +151,7 @@ func (s *Server) serveImpl(tlsConf *tls.Config, conn net.PacketConn) error {
 			// determine the ALPN from the QUIC version used
 			proto := nextProtoH3Draft29
 			if qconn, ok := ch.Conn.(handshake.ConnWithVersion); ok {
-				//nolint:exhaustive
-				switch qconn.GetQUICVersion() {
-				case quic.VersionDraft32:
-					proto = nextProtoH3Draft32
-				case protocol.VersionDraft34:
-					proto = nextProtoH3Draft34
-				case protocol.Version1:
+				if qconn.GetQUICVersion() == protocol.Version1 {
 					proto = nextProtoH3
 				}
 			}
@@ -295,7 +281,7 @@ func (s *Server) handleUnidirectionalStreams(sess quic.EarlySession) {
 		}
 
 		go func(str quic.ReceiveStream) {
-			streamType, err := quicvarint.Read(&byteReaderImpl{str})
+			streamType, err := quicvarint.Read(quicvarint.NewReader(str))
 			if err != nil {
 				s.logger.Debugf("reading stream type on stream %d failed: %s", str.StreamID(), err)
 				return

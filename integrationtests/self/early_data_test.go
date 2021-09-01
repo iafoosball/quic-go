@@ -3,13 +3,13 @@ package self_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"time"
 
-	quic "github.com/lucas-clemente/quic-go"
-	quicproxy "github.com/lucas-clemente/quic-go/integrationtests/tools/proxy"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
+	quic "github.com/iafoosball/quic-go"
+	quicproxy "github.com/iafoosball/quic-go/integrationtests/tools/proxy"
+	"github.com/iafoosball/quic-go/internal/protocol"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -61,7 +61,7 @@ var _ = Describe("early data", func() {
 				Expect(err).ToNot(HaveOccurred())
 				str, err := sess.AcceptUniStream(context.Background())
 				Expect(err).ToNot(HaveOccurred())
-				data, err := ioutil.ReadAll(str)
+				data, err := io.ReadAll(str)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(data).To(Equal([]byte("early data")))
 				sess.CloseWithError(0, "")

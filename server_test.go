@@ -14,14 +14,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lucas-clemente/quic-go/internal/handshake"
-	mocklogging "github.com/lucas-clemente/quic-go/internal/mocks/logging"
-	"github.com/lucas-clemente/quic-go/internal/protocol"
-	"github.com/lucas-clemente/quic-go/internal/qerr"
-	"github.com/lucas-clemente/quic-go/internal/testdata"
-	"github.com/lucas-clemente/quic-go/internal/utils"
-	"github.com/lucas-clemente/quic-go/internal/wire"
-	"github.com/lucas-clemente/quic-go/logging"
+	"github.com/iafoosball/quic-go/internal/handshake"
+	mocklogging "github.com/iafoosball/quic-go/internal/mocks/logging"
+	"github.com/iafoosball/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/qerr"
+	"github.com/iafoosball/quic-go/internal/testdata"
+	"github.com/iafoosball/quic-go/internal/utils"
+	"github.com/iafoosball/quic-go/internal/wire"
+	"github.com/iafoosball/quic-go/logging"
 
 	"github.com/golang/mock/gomock"
 
@@ -406,6 +406,25 @@ var _ = Describe("Server", func() {
 				Eventually(done).Should(BeClosed())
 			})
 
+			It("doesn't send a Version Negotiation packets if sending them is disabled", func() {
+				serv.config.DisableVersionNegotiationPackets = true
+				srcConnID := protocol.ConnectionID{1, 2, 3, 4, 5}
+				destConnID := protocol.ConnectionID{1, 2, 3, 4, 5, 6}
+				packet := getPacket(&wire.Header{
+					IsLongHeader:     true,
+					Type:             protocol.PacketTypeHandshake,
+					SrcConnectionID:  srcConnID,
+					DestConnectionID: destConnID,
+					Version:          0x42,
+				}, make([]byte, protocol.MinUnknownVersionPacketSize))
+				raddr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1337}
+				packet.remoteAddr = raddr
+				done := make(chan struct{})
+				conn.EXPECT().WriteTo(gomock.Any(), raddr).Do(func() { close(done) }).Times(0)
+				serv.handlePacket(packet)
+				Consistently(done, 50*time.Millisecond).ShouldNot(BeClosed())
+			})
+
 			It("ignores Version Negotiation packets", func() {
 				data, err := wire.ComposeVersionNegotiation(
 					protocol.ConnectionID{1, 2, 3, 4},
@@ -549,10 +568,12 @@ var _ = Describe("Server", func() {
 				packet := getPacket(hdr, make([]byte, protocol.MinInitialPacketSize))
 				packet.data[len(packet.data)-10] ^= 0xff // corrupt the packet
 				packet.remoteAddr = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1337}
-				tracer.EXPECT().DroppedPacket(packet.remoteAddr, logging.PacketTypeInitial, packet.Size(), logging.PacketDropPayloadDecryptError)
+				done := make(chan struct{})
+				tracer.EXPECT().DroppedPacket(packet.remoteAddr, logging.PacketTypeInitial, packet.Size(), logging.PacketDropPayloadDecryptError).Do(func(net.Addr, logging.PacketType, protocol.ByteCount, logging.PacketDropReason) { close(done) })
 				serv.handlePacket(packet)
 				// make sure there are no Write calls on the packet conn
 				time.Sleep(50 * time.Millisecond)
+				Eventually(done).Should(BeClosed())
 			})
 
 			It("creates a session, if no Token is required", func() {
