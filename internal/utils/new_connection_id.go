@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"github.com/lucas-clemente/quic-go/internal/protocol"
+	"github.com/iafoosball/quic-go/internal/protocol"
 )
 
 // NewConnectionID is a new connection ID
