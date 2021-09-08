@@ -15,7 +15,8 @@ executors:
  
 jobs:
   "test": &test
-    executor: test-go117
+    executor: test-go115
+    working_directory: /go/src/github.com/iafoosball/quic-go
     steps:
       - checkout
       - run:

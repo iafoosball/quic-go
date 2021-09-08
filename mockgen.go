@@ -1,6 +1,5 @@
 package quic
 
-<<<<<<< HEAD
 //go:generate sh -c "./mockgen_private.sh quic mock_send_conn_test.go github.com/lucas-clemente/quic-go sendConn"
 //go:generate sh -c "./mockgen_private.sh quic mock_sender_test.go github.com/lucas-clemente/quic-go sender"
 //go:generate sh -c "./mockgen_private.sh quic mock_stream_internal_test.go github.com/lucas-clemente/quic-go streamI"
@@ -25,8 +24,7 @@ package quic
 //go:generate sh -c "./mockgen_private.sh quic mock_multiplexer_test.go github.com/lucas-clemente/quic-go multiplexer"
 //go:generate sh -c "./mockgen_private.sh quic mock_batch_conn_test.go github.com/lucas-clemente/quic-go batchConn"
 //go:generate sh -c "mockgen -package quic -self_package github.com/lucas-clemente/quic-go -destination mock_token_store_test.go github.com/lucas-clemente/quic-go TokenStore && goimports -w mock_token_store_test.go"
-//go:generate sh -c "mockgen -package quic -self_package github.com/lucas-clemente/quic-go -destination mock_packetconn_test.go net PacketConn && goimports -w mock_packetconn_test.go"
-=======
+//go:generate sh -c "mockgen -package quic -self_package github.com/lucas-clemente/quic-go -destination mock_packetconn_test.go net PacketConn && goimports -w mock_packetconn_test.go"67f1aaa9be9ac206cca92154e09e14598d3a9a54
 //go:generate sh -c "./mockgen_private.sh quic mock_send_conn_test.go github.com/iafoosball/quic-go sendConn"
 //go:generate sh -c "./mockgen_private.sh quic mock_sender_test.go github.com/iafoosball/quic-go sender"
 //go:generate sh -c "./mockgen_private.sh quic mock_stream_internal_test.go github.com/iafoosball/quic-go streamI"
@@ -51,5 +49,4 @@ package quic
 //go:generate sh -c "./mockgen_private.sh quic mock_multiplexer_test.go github.com/iafoosball/quic-go multiplexer"
 //go:generate sh -c "./mockgen_private.sh quic mock_batch_conn_test.go github.com/iafoosball/quic-go batchConn"
 //go:generate sh -c "mockgen -package quic -self_package github.com/iafoosball/quic-go -destination mock_token_store_test.go github.com/iafoosball/quic-go TokenStore && goimports -w mock_token_store_test.go"
-//go:generate sh -c "mockgen -package quic -self_package github.com/iafoosball/quic-go -destination mock_packetconn_test.go net PacketConn && goimports -w mock_packetconn_test.go"
->>>>>>> update new quic
+//go:generate sh -c "mockgen -package quic -self_package github.com/iafoosball/quic-go -destination mock_packetconn_test.go net PacketConn && goimports -w mock_packetconn_test.go"67f1aaa9be9ac206cca92154e09e14598d3a9a54
