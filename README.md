@@ -3,10 +3,10 @@
 <img src="docs/quic.png" width=303 height=124>
 
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/iafoosball/quic-go)](https://pkg.go.dev/github.com/iafoosball/quic-go)
-[![Travis Build Status](https://img.shields.io/travis/lucas-clemente/quic-go/master.svg?style=flat-square&label=Travis+build)](https://travis-ci.org/lucas-clemente/quic-go)
-[![CircleCI Build Status](https://img.shields.io/circleci/project/github/lucas-clemente/quic-go.svg?style=flat-square&label=CircleCI+build)](https://circleci.com/gh/lucas-clemente/quic-go)
-[![Windows Build Status](https://img.shields.io/appveyor/ci/lucas-clemente/quic-go/master.svg?style=flat-square&label=windows+build)](https://ci.appveyor.com/project/lucas-clemente/quic-go/branch/master)
-[![Code Coverage](https://img.shields.io/codecov/c/github/lucas-clemente/quic-go/master.svg?style=flat-square)](https://codecov.io/gh/lucas-clemente/quic-go/)
+[![Travis Build Status](https://img.shields.io/travis/iafoosball/quic-go/master.svg?style=flat-square&label=Travis+build)](https://travis-ci.org/iafoosball/quic-go)
+[![CircleCI Build Status](https://img.shields.io/circleci/project/github/iafoosball/quic-go.svg?style=flat-square&label=CircleCI+build)](https://circleci.com/gh/iafoosball/quic-go)
+[![Windows Build Status](https://img.shields.io/appveyor/ci/iafoosball/quic-go/master.svg?style=flat-square&label=windows+build)](https://ci.appveyor.com/project/iafoosball/quic-go/branch/master)
+[![Code Coverage](https://img.shields.io/codecov/c/github/iafoosball/quic-go/master.svg?style=flat-square)](https://codecov.io/gh/iafoosball/quic-go/)
 
 quic-go is an implementation of the [QUIC protocol, RFC 9000](https://datatracker.ietf.org/doc/html/rfc9000) protocol in Go.
 In addition to RFC 9000, it currently implements the [IETF QUIC draft-29](https://tools.ietf.org/html/draft-ietf-quic-transport-29). Support for draft-29 will eventually be dropped, as it is phased out of the ecosystem.
