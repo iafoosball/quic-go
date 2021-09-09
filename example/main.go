@@ -157,7 +157,7 @@ func main() {
 	logger.SetLogTimeFormat("")
 
 	if len(bs) == 0 {
-		bs = binds{"localhost:6121"}
+		bs = binds{"localhost:8000"}
 	}
 
 	handler := setupHandler(*www)
@@ -181,8 +181,16 @@ func main() {
 		go func() {
 			var err error
 			if *tcp {
-				certFile, keyFile := testdata.GetCertificatePaths()
+				//certFile, keyFile := testdata.GetCertificatePaths()
+				certFile, keyFile := "/home/jones/Documents/go-hls/cert/server.crt", "/home/jones/Documents/go-hls/cert/server.key"
 				err = http3.ListenAndServe(bCap, certFile, keyFile, handler)
+				/*
+					server := http3.Server{
+						Server:     &http.Server{Handler: handler, Addr: bCap},
+						QuicConfig: quicConf,
+					}
+				*/
+				//err = server.ListenAndServeTLSMultiFolder(certFile, keyFile, bCap, "224.42.42.1:1235", handler)
 			} else {
 				server := http3.Server{
 					Server:     &http.Server{Handler: handler, Addr: bCap},
