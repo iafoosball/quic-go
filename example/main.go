@@ -10,11 +10,13 @@ import (
 	"io/ioutil"
 	"log"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	_ "net/http/pprof"
 
@@ -23,6 +25,9 @@ import (
 	"github.com/iafoosball/quic-go/internal/testdata"
 	"github.com/iafoosball/quic-go/internal/utils"
 	"github.com/iafoosball/quic-go/logging"
+	"github.com/iafoosball/quic-go/multicast"
+
+	//"github.com/iafoosball/quic-go/multicast"
 	"github.com/iafoosball/quic-go/qlog"
 )
 
@@ -143,6 +148,8 @@ func main() {
 	bs := binds{}
 	flag.Var(&bs, "bind", "bind to")
 	www := flag.String("www", "", "www data")
+	cert := flag.String("cert", "/home/jones/Documents/go-hls/cert/", "Certfolder")
+	mACKaddr := flag.String("ack", "192.168.42.52:1234", "ack address")
 	tcp := flag.Bool("tcp", false, "also listen on TCP")
 	enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
@@ -158,6 +165,9 @@ func main() {
 
 	if len(bs) == 0 {
 		bs = binds{"localhost:8000"}
+		bind = "localhost:8000"
+	} else {
+		bind = bs[0]
 	}
 
 	handler := setupHandler(*www)
@@ -174,6 +184,16 @@ func main() {
 		})
 	}
 
+	ifat, err := net.InterfaceByIndex(2)
+	if err != nil {
+		return
+	}
+	fmt.Println(ifat)
+
+	files := make(chan string)
+
+	go test(files)
+
 	var wg sync.WaitGroup
 	wg.Add(len(bs))
 	for _, b := range bs {
@@ -182,15 +202,21 @@ func main() {
 			var err error
 			if *tcp {
 				//certFile, keyFile := testdata.GetCertificatePaths()
-				certFile, keyFile := "/home/jones/Documents/go-hls/cert/server.crt", "/home/jones/Documents/go-hls/cert/server.key"
-				err = http3.ListenAndServe(bCap, certFile, keyFile, handler)
-				/*
-					server := http3.Server{
-						Server:     &http.Server{Handler: handler, Addr: bCap},
-						QuicConfig: quicConf,
-					}
-				*/
-				//err = server.ListenAndServeTLSMultiFolder(certFile, keyFile, bCap, "224.42.42.1:1235", handler)
+				certFile, keyFile := *cert+"server.crt", *cert+"server.key"
+				//err = http3.ListenAndServe(bCap, certFile, keyFile, handler)
+
+				http3 := &http3.Server{
+					Server:     &http.Server{Handler: handler, Addr: bCap},
+					QuicConfig: quicConf,
+				}
+				server := multicast.MulticastServer{
+					Server:     http3,
+					Multicast:  &http.Server{Handler: handler, Addr: "224.42.42.1:1235"},
+					QuicConfig: quicConf,
+				}
+
+				err = server.ListenAndServeTLSMultiFolder(certFile, keyFile, bCap, *mACKaddr, "224.42.42.1:1235", ifat, handler, files)
+
 			} else {
 				server := http3.Server{
 					Server:     &http.Server{Handler: handler, Addr: bCap},
@@ -205,4 +231,32 @@ func main() {
 		}()
 	}
 	wg.Wait()
+}
+
+var bind string
+
+func test(files chan string) {
+	var i int64
+
+	fmt.Println("test started")
+	hostString := bind
+	urls := [7]string{"https://" + hostString + "/index0.ts", "https://" + hostString + "/index1.ts", "https://" + hostString + "/index2.ts", "https://" + hostString + "/index3.ts", "https://" + hostString + "/index4.ts", "https://" + hostString + "/index5.ts", "https://" + hostString + "/index6.ts"}
+
+	for i = 0; i < 1; i++ {
+		time.Sleep(time.Second * 2)
+		fmt.Println("testing ", urls[i])
+
+		if i%3 == 0 {
+			//	SetMulti(true)
+		} else {
+			//	SetMulti(true)
+		}
+		//files <- urls[i]
+		go send(files, urls[i])
+	}
+}
+
+func send(files chan string, msg string) {
+	fmt.Println("Sending ", msg)
+	files <- msg
 }

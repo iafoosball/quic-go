@@ -27,7 +27,7 @@ type sendStream struct {
 	mutex sync.Mutex
 
 	numOutstandingFrames int64
-	retransmissionQueue  []*wire.StreamFrame
+	RetransmissionQueue  []*wire.StreamFrame
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -215,7 +215,7 @@ func (s *sendStream) popNewOrRetransmittedStreamFrame(maxBytes protocol.ByteCoun
 		return nil, false
 	}
 
-	if len(s.retransmissionQueue) > 0 {
+	if len(s.RetransmissionQueue) > 0 {
 		f, hasMoreRetransmissions := s.maybeGetRetransmission(maxBytes)
 		if f != nil || hasMoreRetransmissions {
 			if f == nil {
@@ -310,13 +310,13 @@ func (s *sendStream) popNewStreamFrameWithoutBuffer(f *wire.StreamFrame, maxByte
 }
 
 func (s *sendStream) maybeGetRetransmission(maxBytes protocol.ByteCount) (*wire.StreamFrame, bool /* has more retransmissions */) {
-	f := s.retransmissionQueue[0]
+	f := s.RetransmissionQueue[0]
 	newFrame, needsSplit := f.MaybeSplitOffFrame(maxBytes, s.version)
 	if needsSplit {
 		return newFrame, true
 	}
-	s.retransmissionQueue = s.retransmissionQueue[1:]
-	return f, len(s.retransmissionQueue) > 0
+	s.RetransmissionQueue = s.RetransmissionQueue[1:]
+	return f, len(s.RetransmissionQueue) > 0
 }
 
 func (s *sendStream) hasData() bool {
@@ -363,7 +363,7 @@ func (s *sendStream) frameAcked(f wire.Frame) {
 }
 
 func (s *sendStream) isNewlyCompleted() bool {
-	completed := (s.finSent || s.canceledWrite) && s.numOutstandingFrames == 0 && len(s.retransmissionQueue) == 0
+	completed := (s.finSent || s.canceledWrite) && s.numOutstandingFrames == 0 && len(s.RetransmissionQueue) == 0
 	if completed && !s.completed {
 		s.completed = true
 		return true
@@ -379,7 +379,7 @@ func (s *sendStream) queueRetransmission(f wire.Frame) {
 		s.mutex.Unlock()
 		return
 	}
-	s.retransmissionQueue = append(s.retransmissionQueue, sf)
+	s.RetransmissionQueue = append(s.RetransmissionQueue, sf)
 	s.numOutstandingFrames--
 	if s.numOutstandingFrames < 0 {
 		panic("numOutStandingFrames negative")
@@ -422,7 +422,7 @@ func (s *sendStream) cancelWriteImpl(errorCode qerr.StreamErrorCode, writeErr er
 	s.canceledWrite = true
 	s.cancelWriteErr = writeErr
 	s.numOutstandingFrames = 0
-	s.retransmissionQueue = nil
+	s.RetransmissionQueue = nil
 	newlyCompleted := s.isNewlyCompleted()
 	s.mutex.Unlock()
 

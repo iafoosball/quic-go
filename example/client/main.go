@@ -2,22 +2,24 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
-	"sync"
+	"time"
 
 	"github.com/iafoosball/quic-go"
 	"github.com/iafoosball/quic-go/http3"
+	"github.com/iafoosball/quic-go/internal/protocol"
 	"github.com/iafoosball/quic-go/internal/testdata"
 	"github.com/iafoosball/quic-go/internal/utils"
 	"github.com/iafoosball/quic-go/logging"
+	"github.com/iafoosball/quic-go/multicast"
 	"github.com/iafoosball/quic-go/qlog"
 )
 
@@ -25,10 +27,16 @@ func main() {
 	verbose := flag.Bool("v", false, "verbose")
 	quiet := flag.Bool("q", false, "don't print the data")
 	keyLogFile := flag.String("keylog", "", "key log file")
+	hostString := flag.String("h", "localhost:8081", "host string")
+	multiAddr := flag.String("m", "224.42.42.1:1235", "host string")
 	insecure := flag.Bool("insecure", false, "skip certificate verification")
 	enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	urls := flag.Args()
+
+	if true {
+		urls = []string{"https://" + *hostString + "/index.m3u8", "https://" + *hostString + "/index0.ts", "https://" + *hostString + "/index1.ts", "https://" + *hostString + "/index2.ts", "https://" + *hostString + "/index3.ts", "https://" + *hostString + "/index4.ts", "https://" + *hostString + "/index5.ts", "https://" + *hostString + "/index6.ts"}
+	}
 
 	logger := utils.DefaultLogger
 
@@ -67,7 +75,13 @@ func main() {
 			return utils.NewBufferedWriteCloser(bufio.NewWriter(f), f)
 		})
 	}
-	roundTripper := &http3.RoundTripper{
+
+	ifat, err := net.InterfaceByIndex(2)
+	if err != nil {
+		return
+	}
+
+	roundTripperHttp3 := &http3.RoundTripper{
 		TLSClientConfig: &tls.Config{
 			RootCAs:            pool,
 			InsecureSkipVerify: *insecure,
@@ -75,16 +89,32 @@ func main() {
 		},
 		QuicConfig: &qconf,
 	}
+	roundTripper := &multicast.RoundTripper{
+		RoundTripper: roundTripperHttp3,
+		MultiAddr:    *multiAddr,
+		Ifat:         ifat,
+		TLSClientConfig: &tls.Config{
+			RootCAs:            pool,
+			InsecureSkipVerify: *insecure,
+			KeyLogWriter:       keyLog,
+		},
+		QuicConfig: &qconf,
+	}
+
 	defer roundTripper.Close()
 	hclient := &http.Client{
 		Transport: roundTripper,
 	}
-
-	var wg sync.WaitGroup
-	wg.Add(len(urls))
-	for _, addr := range urls {
-		logger.Infof("GET %s", addr)
-		go func(addr string) {
+	if false {
+		fmt.Println(hclient, urls, quiet)
+	}
+	//var wg sync.WaitGroup
+	//wg.Add(len(urls))
+	now := time.Now()
+	/*
+		for _, addr := range urls {
+			logger.Infof("GET %s", addr)
+			//go func(addr string) {
 			rsp, err := hclient.Get(addr)
 			if err != nil {
 				log.Fatal(err)
@@ -102,8 +132,93 @@ func main() {
 				logger.Infof("Response Body:")
 				logger.Infof("%s", body.Bytes())
 			}
-			wg.Done()
-		}(addr)
+			//wg.Done()
+			//}(addr)
+		}
+	*/
+
+	c, err := net.ListenPacket("udp4", "224.42.42.1:1235")
+	if err != nil {
+		// error handling
+		println("Error listen unicast " + err.Error())
 	}
-	wg.Wait()
+	defer c.Close()
+
+	addr, err := net.ResolveUDPAddr("udp", "224.42.42.1:1235")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	l, err := net.ListenMulticastUDP("udp", nil, addr)
+	l.SetReadBuffer(protocol.InitialPacketSizeIPv4)
+
+	testFile, err := os.Create("test.ts")
+	if err != nil {
+		fmt.Println("Error creating file", err)
+	}
+	fmt.Println(testFile)
+
+	totalPackets := 0
+	totalSize := 0
+
+	go func() {
+		//size := 32 * 1024
+		//buf := make([]byte, size)
+
+		buf := make([]byte, protocol.InitialPacketSizeIPv4)
+		for {
+
+			n, src, err := l.ReadFromUDP(buf)
+			if err != nil {
+				log.Fatal("ReadFromUDP failed:", err)
+			}
+
+			//print received data
+			//log.Println(n, "bytes read from", src)
+
+			if true {
+				short := false
+				for i := 0; i < 10; i++ {
+					if buf[i]&0x80 == 0 {
+						short = true
+						//fmt.Printf(" %x ", buf[i])
+					}
+				}
+				if !short {
+					fmt.Print("Not short header")
+				}
+			}
+			totalPackets += 1
+			totalSize += n
+			if true {
+				fmt.Println("totalpacket ", totalPackets, " totalsize ", totalSize, " from ", src)
+			}
+
+			//b := make(buf)
+			/*
+				n, err := res.Body.Read(buf)
+				if err != nil {
+					if err == io.EOF {
+						//testFile.Close()
+					} else {
+						log.Fatal("ReadFromBody failed:", err)
+					}
+				}
+			*/
+			_, ferr := testFile.Write(buf[0:n])
+			if ferr != nil {
+				log.Fatal("File error ", ferr)
+			}
+			if err == io.EOF {
+				testFile.Close()
+				break
+			}
+			//fmt.Println("Written ", fn)
+		}
+	}()
+
+	select {}
+
+	//wg.Wait()
+	fmt.Println("total time ", time.Now().Sub(now))
 }

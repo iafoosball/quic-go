@@ -36,17 +36,17 @@ var defaultQuicConfig = &quic.Config{
 
 var dialAddr = quic.DialAddrEarly
 
-type roundTripperOpts struct {
+type RoundTripperOpts struct {
 	DisableCompression bool
 	EnableDatagram     bool
 	MaxHeaderBytes     int64
 }
 
 // client is a HTTP3 client doing requests
-type client struct {
+type Client struct {
 	tlsConf *tls.Config
 	config  *quic.Config
-	opts    *roundTripperOpts
+	opts    *RoundTripperOpts
 
 	dialOnce     sync.Once
 	dialer       func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error)
@@ -62,13 +62,13 @@ type client struct {
 	logger utils.Logger
 }
 
-func newClient(
+func NewClient(
 	hostname string,
 	tlsConf *tls.Config,
-	opts *roundTripperOpts,
+	opts *RoundTripperOpts,
 	quicConfig *quic.Config,
 	dialer func(network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlySession, error),
-) (*client, error) {
+) (*Client, error) {
 	if quicConfig == nil {
 		quicConfig = defaultQuicConfig.Clone()
 	} else if len(quicConfig.Versions) == 0 {
@@ -90,7 +90,7 @@ func newClient(
 	// Replace existing ALPNs by H3
 	tlsConf.NextProtos = []string{versionToALPN(quicConfig.Versions[0])}
 
-	return &client{
+	return &Client{
 		hostname:      authorityAddr("https", hostname),
 		tlsConf:       tlsConf,
 		requestWriter: newRequestWriter(logger),
@@ -102,7 +102,7 @@ func newClient(
 	}, nil
 }
 
-func (c *client) dial() error {
+func (c *Client) dial() error {
 	var err error
 	if c.dialer != nil {
 		c.session, err = c.dialer("udp", c.hostname, c.tlsConf, c.config)
@@ -125,7 +125,7 @@ func (c *client) dial() error {
 	return nil
 }
 
-func (c *client) setupSession() error {
+func (c *Client) setupSession() error {
 	// open the control stream
 	str, err := c.session.OpenUniStream()
 	if err != nil {
@@ -139,7 +139,7 @@ func (c *client) setupSession() error {
 	return err
 }
 
-func (c *client) handleUnidirectionalStreams() {
+func (c *Client) handleUnidirectionalStreams() {
 	for {
 		str, err := c.session.AcceptUniStream(context.Background())
 		if err != nil {
@@ -191,14 +191,14 @@ func (c *client) handleUnidirectionalStreams() {
 	}
 }
 
-func (c *client) Close() error {
+func (c *Client) Close() error {
 	if c.session == nil {
 		return nil
 	}
 	return c.session.CloseWithError(quic.ApplicationErrorCode(errorNoError), "")
 }
 
-func (c *client) maxHeaderBytes() uint64 {
+func (c *Client) maxHeaderBytes() uint64 {
 	if c.opts.MaxHeaderBytes <= 0 {
 		return defaultMaxResponseHeaderBytes
 	}
@@ -206,7 +206,7 @@ func (c *client) maxHeaderBytes() uint64 {
 }
 
 // RoundTrip executes a request and returns a response
-func (c *client) RoundTrip(req *http.Request) (*http.Response, error) {
+func (c *Client) RoundTrip(req *http.Request) (*http.Response, error) {
 	if authorityAddr("https", hostnameFromRequest(req)) != c.hostname {
 		return nil, fmt.Errorf("http3 client BUG: RoundTrip called for the wrong client (expected %s, got %s)", c.hostname, req.Host)
 	}
@@ -266,7 +266,7 @@ func (c *client) RoundTrip(req *http.Request) (*http.Response, error) {
 	return rsp, rerr.err
 }
 
-func (c *client) doRequest(
+func (c *Client) doRequest(
 	req *http.Request,
 	str quic.Stream,
 	reqDone chan struct{},

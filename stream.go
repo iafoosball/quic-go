@@ -116,6 +116,35 @@ func newStream(streamID protocol.StreamID,
 	return s
 }
 
+// newStream creates a new Stream
+func newMultiStream(streamID protocol.StreamID,
+	sender streamSender,
+	version protocol.VersionNumber,
+) *stream {
+	s := &stream{sender: sender, version: version}
+	senderForSendStream := &uniStreamSender{
+		streamSender: sender,
+		onStreamCompletedImpl: func() {
+			s.completedMutex.Lock()
+			s.sendStreamCompleted = true
+			s.checkIfCompleted()
+			s.completedMutex.Unlock()
+		},
+	}
+	s.sendStream = *newSendStream(streamID, senderForSendStream, nil, version)
+	senderForReceiveStream := &uniStreamSender{
+		streamSender: sender,
+		onStreamCompletedImpl: func() {
+			s.completedMutex.Lock()
+			s.receiveStreamCompleted = true
+			s.checkIfCompleted()
+			s.completedMutex.Unlock()
+		},
+	}
+	s.receiveStream = *newReceiveStream(streamID, senderForReceiveStream, nil, version)
+	return s
+}
+
 // need to define StreamID() here, since both receiveStream and readStream have a StreamID()
 func (s *stream) StreamID() protocol.StreamID {
 	// the result is same for receiveStream and sendStream

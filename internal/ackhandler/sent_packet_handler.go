@@ -248,6 +248,7 @@ func (h *sentPacketHandler) getPacketNumberSpace(encLevel protocol.EncryptionLev
 	case protocol.Encryption0RTT, protocol.Encryption1RTT:
 		return h.appDataPackets
 	default:
+		fmt.Println(encLevel)
 		panic("invalid packet number space")
 	}
 }

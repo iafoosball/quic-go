@@ -370,6 +370,18 @@ func (s *Server) handleRequest(sess quic.Session, str quic.Stream, decoder *qpac
 	ctx = context.WithValue(ctx, ServerContextKey, s)
 	ctx = context.WithValue(ctx, http.LocalAddrContextKey, sess.LocalAddr())
 	req = req.WithContext(ctx)
+
+	multiHeaderValue, multiHeader := req.Header["Multicast"]
+
+	for _, j := range multiHeaderValue {
+		if j == "true" {
+			multiHeader = true
+		} else {
+			multiHeader = false
+		}
+	}
+	fmt.Println(multiHeader)
+
 	r := newResponseWriter(str, s.logger)
 	defer func() {
 		if !r.usedDataStream() {
@@ -558,4 +570,9 @@ func ListenAndServe(addr, certFile, keyFile string, handler http.Handler) error 
 		// Cannot close the HTTP server or wait for requests to complete properly :/
 		return err
 	}
+}
+
+func (s *Server) ListenACK(conn net.PacketConn) error {
+
+	return s.Serve(conn)
 }

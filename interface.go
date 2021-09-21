@@ -308,6 +308,8 @@ type Listener interface {
 	Addr() net.Addr
 	// Accept returns new sessions. It should be called in a loop.
 	Accept(context.Context) (Session, error)
+	// Accept returns new sessions. It should be called in a loop.
+	MultiAccept(context.Context) (Session, error)
 }
 
 // An EarlyListener listens for incoming QUIC connections,
@@ -319,4 +321,6 @@ type EarlyListener interface {
 	Addr() net.Addr
 	// Accept returns new early sessions. It should be called in a loop.
 	Accept(context.Context) (EarlySession, error)
+	// Accept returns new early sessions. It should be called in a loop.
+	MultiAccept(context.Context) (EarlySession, error)
 }

@@ -7,7 +7,7 @@ import (
 	"github.com/iafoosball/quic-go/internal/wire"
 )
 
-type retransmissionQueue struct {
+type RetransmissionQueue struct {
 	initial           []wire.Frame
 	initialCryptoData []*wire.CryptoFrame
 
@@ -19,11 +19,11 @@ type retransmissionQueue struct {
 	version protocol.VersionNumber
 }
 
-func newRetransmissionQueue(ver protocol.VersionNumber) *retransmissionQueue {
-	return &retransmissionQueue{version: ver}
+func NewRetransmissionQueue(ver protocol.VersionNumber) *RetransmissionQueue {
+	return &RetransmissionQueue{version: ver}
 }
 
-func (q *retransmissionQueue) AddInitial(f wire.Frame) {
+func (q *RetransmissionQueue) AddInitial(f wire.Frame) {
 	if cf, ok := f.(*wire.CryptoFrame); ok {
 		q.initialCryptoData = append(q.initialCryptoData, cf)
 		return
@@ -31,7 +31,7 @@ func (q *retransmissionQueue) AddInitial(f wire.Frame) {
 	q.initial = append(q.initial, f)
 }
 
-func (q *retransmissionQueue) AddHandshake(f wire.Frame) {
+func (q *RetransmissionQueue) AddHandshake(f wire.Frame) {
 	if cf, ok := f.(*wire.CryptoFrame); ok {
 		q.handshakeCryptoData = append(q.handshakeCryptoData, cf)
 		return
@@ -39,26 +39,26 @@ func (q *retransmissionQueue) AddHandshake(f wire.Frame) {
 	q.handshake = append(q.handshake, f)
 }
 
-func (q *retransmissionQueue) HasInitialData() bool {
+func (q *RetransmissionQueue) HasInitialData() bool {
 	return len(q.initialCryptoData) > 0 || len(q.initial) > 0
 }
 
-func (q *retransmissionQueue) HasHandshakeData() bool {
+func (q *RetransmissionQueue) HasHandshakeData() bool {
 	return len(q.handshakeCryptoData) > 0 || len(q.handshake) > 0
 }
 
-func (q *retransmissionQueue) HasAppData() bool {
+func (q *RetransmissionQueue) HasAppData() bool {
 	return len(q.appData) > 0
 }
 
-func (q *retransmissionQueue) AddAppData(f wire.Frame) {
+func (q *RetransmissionQueue) AddAppData(f wire.Frame) {
 	if _, ok := f.(*wire.StreamFrame); ok {
 		panic("STREAM frames are handled with their respective streams.")
 	}
 	q.appData = append(q.appData, f)
 }
 
-func (q *retransmissionQueue) GetInitialFrame(maxLen protocol.ByteCount) wire.Frame {
+func (q *RetransmissionQueue) GetInitialFrame(maxLen protocol.ByteCount) wire.Frame {
 	if len(q.initialCryptoData) > 0 {
 		f := q.initialCryptoData[0]
 		newFrame, needsSplit := f.MaybeSplitOffFrame(maxLen, q.version)
@@ -81,7 +81,7 @@ func (q *retransmissionQueue) GetInitialFrame(maxLen protocol.ByteCount) wire.Fr
 	return f
 }
 
-func (q *retransmissionQueue) GetHandshakeFrame(maxLen protocol.ByteCount) wire.Frame {
+func (q *RetransmissionQueue) GetHandshakeFrame(maxLen protocol.ByteCount) wire.Frame {
 	if len(q.handshakeCryptoData) > 0 {
 		f := q.handshakeCryptoData[0]
 		newFrame, needsSplit := f.MaybeSplitOffFrame(maxLen, q.version)
@@ -104,7 +104,7 @@ func (q *retransmissionQueue) GetHandshakeFrame(maxLen protocol.ByteCount) wire.
 	return f
 }
 
-func (q *retransmissionQueue) GetAppDataFrame(maxLen protocol.ByteCount) wire.Frame {
+func (q *RetransmissionQueue) GetAppDataFrame(maxLen protocol.ByteCount) wire.Frame {
 	if len(q.appData) == 0 {
 		return nil
 	}
@@ -116,7 +116,7 @@ func (q *retransmissionQueue) GetAppDataFrame(maxLen protocol.ByteCount) wire.Fr
 	return f
 }
 
-func (q *retransmissionQueue) DropPackets(encLevel protocol.EncryptionLevel) {
+func (q *RetransmissionQueue) DropPackets(encLevel protocol.EncryptionLevel) {
 	//nolint:exhaustive // Can only drop Initial and Handshake packet number space.
 	switch encLevel {
 	case protocol.EncryptionInitial:

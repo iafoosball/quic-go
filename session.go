@@ -157,7 +157,7 @@ type session struct {
 	cryptoStreamManager   *cryptoStreamManager
 	sentPacketHandler     ackhandler.SentPacketHandler
 	receivedPacketHandler ackhandler.ReceivedPacketHandler
-	retransmissionQueue   *retransmissionQueue
+	RetransmissionQueue   *RetransmissionQueue
 	framer                framer
 	windowUpdateQueue     *windowUpdateQueue
 	connFlowController    flowcontrol.ConnectionFlowController
@@ -347,7 +347,7 @@ var newSession = func(
 		initialStream,
 		handshakeStream,
 		s.sentPacketHandler,
-		s.retransmissionQueue,
+		s.RetransmissionQueue,
 		s.RemoteAddr(),
 		cs,
 		s.framer,
@@ -471,7 +471,7 @@ var newClientSession = func(
 		initialStream,
 		handshakeStream,
 		s.sentPacketHandler,
-		s.retransmissionQueue,
+		s.RetransmissionQueue,
 		s.RemoteAddr(),
 		cs,
 		s.framer,
@@ -495,7 +495,7 @@ var newClientSession = func(
 
 func (s *session) preSetup() {
 	s.sendQueue = newSendQueue(s.conn)
-	s.retransmissionQueue = newRetransmissionQueue(s.version)
+	s.RetransmissionQueue = NewRetransmissionQueue(s.version)
 	s.frameParser = wire.NewFrameParser(s.config.EnableDatagrams, s.version)
 	s.rttStats = &utils.RTTStats{}
 	s.connFlowController = flowcontrol.NewConnectionFlowController(
@@ -1724,11 +1724,11 @@ func (s *session) sendProbePacket(encLevel protocol.EncryptionLevel) error {
 		//nolint:exhaustive // Cannot send probe packets for 0-RTT.
 		switch encLevel {
 		case protocol.EncryptionInitial:
-			s.retransmissionQueue.AddInitial(&wire.PingFrame{})
+			s.RetransmissionQueue.AddInitial(&wire.PingFrame{})
 		case protocol.EncryptionHandshake:
-			s.retransmissionQueue.AddHandshake(&wire.PingFrame{})
+			s.RetransmissionQueue.AddHandshake(&wire.PingFrame{})
 		case protocol.Encryption1RTT:
-			s.retransmissionQueue.AddAppData(&wire.PingFrame{})
+			s.RetransmissionQueue.AddAppData(&wire.PingFrame{})
 		default:
 			panic("unexpected encryption level")
 		}
@@ -1762,7 +1762,7 @@ func (s *session) sendPacket() (bool, error) {
 			if s.firstAckElicitingPacketAfterIdleSentTime.IsZero() && p.IsAckEliciting() {
 				s.firstAckElicitingPacketAfterIdleSentTime = now
 			}
-			s.sentPacketHandler.SentPacket(p.ToAckHandlerPacket(now, s.retransmissionQueue))
+			s.sentPacketHandler.SentPacket(p.ToAckHandlerPacket(now, s.RetransmissionQueue))
 		}
 		s.connIDManager.SentPacket()
 		s.sendQueue.Send(packet.buffer)
@@ -1789,7 +1789,7 @@ func (s *session) sendPackedPacket(packet *packedPacket, now time.Time) {
 		s.firstAckElicitingPacketAfterIdleSentTime = now
 	}
 	s.logPacket(packet)
-	s.sentPacketHandler.SentPacket(packet.ToAckHandlerPacket(now, s.retransmissionQueue))
+	s.sentPacketHandler.SentPacket(packet.ToAckHandlerPacket(now, s.RetransmissionQueue))
 	s.connIDManager.SentPacket()
 	s.sendQueue.Send(packet.buffer)
 }

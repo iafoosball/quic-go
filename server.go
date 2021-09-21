@@ -116,6 +116,10 @@ func (s *earlyServer) Accept(ctx context.Context) (EarlySession, error) {
 	return s.baseServer.accept(ctx)
 }
 
+func (s *earlyServer) MultiAccept(ctx context.Context) (EarlySession, error) {
+	return s.baseServer.accept(ctx)
+}
+
 // ListenAddr creates a QUIC server listening on a given address.
 // The tls.Config must not be nil and must contain a certificate configuration.
 // The quic.Config may be nil, in that case the default values will be used.
@@ -269,6 +273,7 @@ func (s *baseServer) accept(ctx context.Context) (quicSession, error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case sess := <-s.sessionQueue:
+		fmt.Println("Accepted ", sess)
 		atomic.AddInt32(&s.sessionQueueLen, -1)
 		return sess, nil
 	case <-s.errorChan:

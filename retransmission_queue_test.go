@@ -11,10 +11,10 @@ import (
 var _ = Describe("Retransmission queue", func() {
 	const version = protocol.VersionTLS
 
-	var q *retransmissionQueue
+	var q *RetransmissionQueue
 
 	BeforeEach(func() {
-		q = newRetransmissionQueue(version)
+		q = NewRetransmissionQueue(version)
 	})
 
 	Context("Initial data", func() {

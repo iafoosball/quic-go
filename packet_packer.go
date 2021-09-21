@@ -81,7 +81,7 @@ func (p *packetContents) IsAckEliciting() bool {
 	return ackhandler.HasAckElicitingFrames(p.frames)
 }
 
-func (p *packetContents) ToAckHandlerPacket(now time.Time, q *retransmissionQueue) *ackhandler.Packet {
+func (p *packetContents) ToAckHandlerPacket(now time.Time, q *RetransmissionQueue) *ackhandler.Packet {
 	largestAcked := protocol.InvalidPacketNumber
 	if p.ack != nil {
 		largestAcked = p.ack.LargestAcked()
@@ -164,7 +164,7 @@ type packetPacker struct {
 	framer              frameSource
 	acks                ackFrameSource
 	datagramQueue       *datagramQueue
-	retransmissionQueue *retransmissionQueue
+	RetransmissionQueue *RetransmissionQueue
 
 	maxPacketSize          protocol.ByteCount
 	numNonAckElicitingAcks int
@@ -178,7 +178,7 @@ func newPacketPacker(
 	initialStream cryptoStream,
 	handshakeStream cryptoStream,
 	packetNumberManager packetNumberManager,
-	retransmissionQueue *retransmissionQueue,
+	RetransmissionQueue *RetransmissionQueue,
 	remoteAddr net.Addr, // only used for determining the max packet size
 	cryptoSetup sealingManager,
 	framer frameSource,
@@ -193,7 +193,7 @@ func newPacketPacker(
 		srcConnID:           srcConnID,
 		initialStream:       initialStream,
 		handshakeStream:     handshakeStream,
-		retransmissionQueue: retransmissionQueue,
+		RetransmissionQueue: RetransmissionQueue,
 		datagramQueue:       datagramQueue,
 		perspective:         perspective,
 		version:             version,
@@ -490,10 +490,10 @@ func (p *packetPacker) maybeGetCryptoPacket(maxPacketSize, currentSize protocol.
 	switch encLevel {
 	case protocol.EncryptionInitial:
 		s = p.initialStream
-		hasRetransmission = p.retransmissionQueue.HasInitialData()
+		hasRetransmission = p.RetransmissionQueue.HasInitialData()
 	case protocol.EncryptionHandshake:
 		s = p.handshakeStream
-		hasRetransmission = p.retransmissionQueue.HasHandshakeData()
+		hasRetransmission = p.RetransmissionQueue.HasHandshakeData()
 	}
 
 	hasData := s.HasData()
@@ -520,9 +520,9 @@ func (p *packetPacker) maybeGetCryptoPacket(maxPacketSize, currentSize protocol.
 			//nolint:exhaustive // 0-RTT packets can't contain any retransmission.s
 			switch encLevel {
 			case protocol.EncryptionInitial:
-				f = p.retransmissionQueue.GetInitialFrame(maxPacketSize)
+				f = p.RetransmissionQueue.GetInitialFrame(maxPacketSize)
 			case protocol.EncryptionHandshake:
-				f = p.retransmissionQueue.GetHandshakeFrame(maxPacketSize)
+				f = p.RetransmissionQueue.GetHandshakeFrame(maxPacketSize)
 			}
 			if f == nil {
 				break
@@ -609,7 +609,7 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, ackAll
 
 	var ack *wire.AckFrame
 	hasData := p.framer.HasData()
-	hasRetransmission := p.retransmissionQueue.HasAppData()
+	hasRetransmission := p.RetransmissionQueue.HasAppData()
 	// TODO: make sure ACKs are sent when a lot of DATAGRAMs are queued
 	if !hasDatagram && ackAllowed {
 		ack = p.acks.GetAckFrame(protocol.Encryption1RTT, !hasRetransmission && !hasData)
@@ -629,7 +629,7 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, ackAll
 			if remainingLen < protocol.MinStreamFrameSize {
 				break
 			}
-			f := p.retransmissionQueue.GetAppDataFrame(remainingLen)
+			f := p.RetransmissionQueue.GetAppDataFrame(remainingLen)
 			if f == nil {
 				break
 			}

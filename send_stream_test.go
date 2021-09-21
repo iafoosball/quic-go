@@ -994,7 +994,7 @@ var _ = Describe("Send Stream", func() {
 			str.CancelWrite(9876)
 			// don't EXPECT any calls to onHasStreamData
 			f.OnLost(f.Frame)
-			Expect(str.retransmissionQueue).To(BeEmpty())
+			Expect(str.RetransmissionQueue).To(BeEmpty())
 		})
 	})
 

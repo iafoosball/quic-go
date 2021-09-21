@@ -1368,13 +1368,13 @@ var _ = Describe("Session", func() {
 					switch encLevel {
 					case protocol.EncryptionInitial:
 						sendMode = ackhandler.SendPTOInitial
-						getFrame = sess.retransmissionQueue.GetInitialFrame
+						getFrame = sess.RetransmissionQueue.GetInitialFrame
 					case protocol.EncryptionHandshake:
 						sendMode = ackhandler.SendPTOHandshake
-						getFrame = sess.retransmissionQueue.GetHandshakeFrame
+						getFrame = sess.RetransmissionQueue.GetHandshakeFrame
 					case protocol.Encryption1RTT:
 						sendMode = ackhandler.SendPTOAppData
-						getFrame = sess.retransmissionQueue.GetAppDataFrame
+						getFrame = sess.RetransmissionQueue.GetAppDataFrame
 					}
 				})
 
