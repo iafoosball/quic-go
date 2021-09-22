@@ -98,7 +98,7 @@ func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr
 	totalMultiPackets := 0
 	now := time.Now()
 
-	conn.SetWriteBuffer(protocol.InitialPacketSizeIPv4)
+	conn.SetWriteBuffer(1439)
 	go func() {
 		//size := 32 * 1024
 
@@ -174,7 +174,7 @@ func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr
 			*/
 			conn.SetWriteDeadline(time.Now().Add(time.Millisecond * 500))
 			m, _ := conn.Write(buf[0:n])
-			time.Sleep(time.Millisecond * 1)
+
 			totalMulti += m
 			totalMultiPackets += 1
 			_, ferr := testFile.Write(buf[0:n])

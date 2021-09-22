@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
@@ -150,6 +151,10 @@ func main() {
 	}
 
 	l, err := net.ListenMulticastUDP("udp", nil, addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer l.Close()
 	l.SetReadBuffer(protocol.InitialPacketSizeIPv4)
 
 	testFile, err := os.Create("test.ts")
@@ -161,16 +166,20 @@ func main() {
 	totalPackets := 0
 	totalSize := 0
 
+	doneChan := make(chan error, 1)
+	ctx := context.Background()
+
 	go func() {
 		//size := 32 * 1024
 		//buf := make([]byte, size)
 
-		buf := make([]byte, protocol.InitialPacketSizeIPv4)
+		buf := make([]byte, 1439)
 		for {
 
-			n, src, err := l.ReadFromUDP(buf)
+			n, _, err := l.ReadFromUDP(buf)
 			if err != nil {
-				log.Fatal("ReadFromUDP failed:", err)
+				doneChan <- err
+				break
 			}
 
 			//print received data
@@ -190,8 +199,8 @@ func main() {
 			}
 			totalPackets += 1
 			totalSize += n
-			if true {
-				fmt.Println("totalpacket ", totalPackets, " totalsize ", totalSize, " from ", src)
+			if totalPackets%15 == 0 {
+				l.SetReadDeadline(time.Now().Add(1 * time.Second))
 			}
 
 			//b := make(buf)
@@ -207,7 +216,8 @@ func main() {
 			*/
 			_, ferr := testFile.Write(buf[0:n])
 			if ferr != nil {
-				log.Fatal("File error ", ferr)
+				doneChan <- err
+				break
 			}
 			if err == io.EOF {
 				testFile.Close()
@@ -217,8 +227,15 @@ func main() {
 		}
 	}()
 
-	select {}
+	select {
+	case <-ctx.Done():
+		fmt.Println("cancelled")
+		err = ctx.Err()
+	case err = <-doneChan:
+		fmt.Println("Done ", err)
+	}
 
 	//wg.Wait()
+	fmt.Println("totalpacket ", totalPackets, " totalsize ", totalSize)
 	fmt.Println("total time ", time.Now().Sub(now))
 }
