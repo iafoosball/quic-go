@@ -16,7 +16,6 @@ import (
 
 	"github.com/iafoosball/quic-go"
 	"github.com/iafoosball/quic-go/http3"
-	"github.com/iafoosball/quic-go/internal/protocol"
 	"github.com/iafoosball/quic-go/internal/testdata"
 	"github.com/iafoosball/quic-go/internal/utils"
 	"github.com/iafoosball/quic-go/logging"
@@ -111,7 +110,6 @@ func main() {
 	}
 	//var wg sync.WaitGroup
 	//wg.Add(len(urls))
-	now := time.Now()
 	/*
 		for _, addr := range urls {
 			logger.Infof("GET %s", addr)
@@ -155,7 +153,9 @@ func main() {
 		log.Fatal(err)
 	}
 	defer l.Close()
-	l.SetReadBuffer(protocol.InitialPacketSizeIPv4)
+	size := 32 * 1024
+	databuf := make([]byte, size)
+	l.SetReadBuffer(size)
 
 	testFile, err := os.Create("test.ts")
 	if err != nil {
@@ -167,25 +167,60 @@ func main() {
 	totalSize := 0
 
 	doneChan := make(chan error, 1)
+	writeChan := make(chan []byte)
 	ctx := context.Background()
 
+	src, dst := io.Pipe()
+
+	//reader := bufio.NewReader(l)
+	writer := bufio.NewWriter(testFile)
+
+	now := time.Now()
+
 	go func() {
-		//size := 32 * 1024
-		//buf := make([]byte, size)
 
 		buf := make([]byte, 1439)
 		for {
 
-			n, _, err := l.ReadFromUDP(buf)
+			n, err := l.Read(databuf)
 			if err != nil {
 				doneChan <- err
 				break
 			}
+			if totalPackets == 0 {
+				now = time.Now()
+			}
+			totalPackets += 1
+			totalSize += n
+			writer.Write(databuf[:n])
+			//dst.Write(buf[:n])
+
+			/*
+
+				data, err := ioutil.ReadAll(l)
+				if err != nil {
+					doneChan <- err
+					break
+				}
+				_, ferr := testFile.Write(data)
+				if ferr != nil {
+					doneChan <- err
+					break
+				}
+				if err == io.EOF {
+					testFile.Close()
+					break
+				}
+			*/
+			//writeChan <- buf[:n]
 
 			//print received data
 			//log.Println(n, "bytes read from", src)
+			if totalPackets%15 == 0 {
+				l.SetReadDeadline(time.Now().Add(time.Second * 1))
+			}
 
-			if true {
+			if false {
 				short := false
 				for i := 0; i < 10; i++ {
 					if buf[i]&0x80 == 0 {
@@ -197,32 +232,7 @@ func main() {
 					fmt.Print("Not short header")
 				}
 			}
-			totalPackets += 1
-			totalSize += n
-			if totalPackets%15 == 0 {
-				l.SetReadDeadline(time.Now().Add(1 * time.Second))
-			}
 
-			//b := make(buf)
-			/*
-				n, err := res.Body.Read(buf)
-				if err != nil {
-					if err == io.EOF {
-						//testFile.Close()
-					} else {
-						log.Fatal("ReadFromBody failed:", err)
-					}
-				}
-			*/
-			_, ferr := testFile.Write(buf[0:n])
-			if ferr != nil {
-				doneChan <- err
-				break
-			}
-			if err == io.EOF {
-				testFile.Close()
-				break
-			}
 			//fmt.Println("Written ", fn)
 		}
 	}()
@@ -231,8 +241,26 @@ func main() {
 	case <-ctx.Done():
 		fmt.Println("cancelled")
 		err = ctx.Err()
+		src.Close()
 	case err = <-doneChan:
 		fmt.Println("Done ", err)
+		dst.Close()
+		src.Close()
+		testFile.Close()
+	case <-writeChan:
+
+		//b := make(buf)
+		/*
+			n, err := res.Body.Read(buf)
+			if err != nil {
+				if err == io.EOF {
+					//testFile.Close()
+				} else {
+					log.Fatal("ReadFromBody failed:", err)
+				}
+			}
+		*/
+
 	}
 
 	//wg.Wait()

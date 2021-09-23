@@ -71,6 +71,26 @@ func MultiCast(files chan string, conn *net.UDPConn, hclient *http.Client, addr 
 	}
 }
 
+type MulticastHeader struct {
+	wire.Header
+
+	typeByte byte
+
+	PacketNumberLen protocol.PacketNumberLen
+	PacketNumber    protocol.PacketNumber
+
+	parsedLen protocol.ByteCount
+}
+
+func (p *packetPacker) getMultiHeader() *MulticastHeader {
+	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
+	hdr := &MulticastHeader{}
+	hdr.PacketNumber = pn
+	hdr.PacketNumberLen = pnLen
+	hdr.DestConnectionID = p.getDestConnID()
+	return hdr
+}
+
 func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr) bool {
 	url := file
 	fmt.Println("Sending ", url)
@@ -98,6 +118,17 @@ func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr
 	totalMultiPackets := 0
 	now := time.Now()
 
+	srcConnID, err := generateConnectionID(4)
+	if err != nil {
+		panic(err)
+	}
+	destConnID, err := generateConnectionIDForInitial()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("src id ", srcConnID, "dst id ", destConnID)
+
 	conn.SetWriteBuffer(1439)
 	go func() {
 		//size := 32 * 1024
@@ -118,7 +149,7 @@ func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr
 				}
 			}
 
-			if true {
+			if false {
 				short := false
 				if buf[0]&0x40 == 0 {
 					fmt.Println("Would be error 0x40 ", n)
@@ -174,7 +205,7 @@ func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr
 			*/
 			conn.SetWriteDeadline(time.Now().Add(time.Millisecond * 500))
 			m, _ := conn.Write(buf[0:n])
-
+			time.Sleep(time.Millisecond * 1)
 			totalMulti += m
 			totalMultiPackets += 1
 			_, ferr := testFile.Write(buf[0:n])
