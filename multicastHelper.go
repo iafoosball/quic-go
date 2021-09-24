@@ -191,7 +191,6 @@ func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr
 			totalPackets += 1
 			totalData += n
 			/*
-
 				f, err := os.Open(file)
 				if err != nil {
 					panic(err)

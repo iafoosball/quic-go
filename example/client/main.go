@@ -167,19 +167,12 @@ func main() {
 	totalSize := 0
 
 	doneChan := make(chan error, 1)
-	writeChan := make(chan []byte)
 	ctx := context.Background()
-
-	src, dst := io.Pipe()
-
-	//reader := bufio.NewReader(l)
-	writer := bufio.NewWriter(testFile)
 
 	now := time.Now()
 
 	go func() {
 
-		buf := make([]byte, 1439)
 		for {
 
 			n, err := l.Read(databuf)
@@ -192,7 +185,13 @@ func main() {
 			}
 			totalPackets += 1
 			totalSize += n
-			writer.Write(databuf[:n])
+			fw, err := testFile.Write(databuf[:n])
+			if err != nil {
+				panic(err)
+			}
+			if false {
+				fmt.Println(fw)
+			}
 			//dst.Write(buf[:n])
 
 			/*
@@ -220,19 +219,6 @@ func main() {
 				l.SetReadDeadline(time.Now().Add(time.Second * 1))
 			}
 
-			if false {
-				short := false
-				for i := 0; i < 10; i++ {
-					if buf[i]&0x80 == 0 {
-						short = true
-						//fmt.Printf(" %x ", buf[i])
-					}
-				}
-				if !short {
-					fmt.Print("Not short header")
-				}
-			}
-
 			//fmt.Println("Written ", fn)
 		}
 	}()
@@ -241,26 +227,9 @@ func main() {
 	case <-ctx.Done():
 		fmt.Println("cancelled")
 		err = ctx.Err()
-		src.Close()
 	case err = <-doneChan:
 		fmt.Println("Done ", err)
-		dst.Close()
-		src.Close()
 		testFile.Close()
-	case <-writeChan:
-
-		//b := make(buf)
-		/*
-			n, err := res.Body.Read(buf)
-			if err != nil {
-				if err == io.EOF {
-					//testFile.Close()
-				} else {
-					log.Fatal("ReadFromBody failed:", err)
-				}
-			}
-		*/
-
 	}
 
 	//wg.Wait()
