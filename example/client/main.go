@@ -5,13 +5,17 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"net/textproto"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/iafoosball/quic-go"
@@ -157,19 +161,21 @@ func main() {
 	databuf := make([]byte, size)
 	l.SetReadBuffer(size)
 
-	testFile, err := os.Create("test.ts")
-	if err != nil {
-		fmt.Println("Error creating file", err)
-	}
-	fmt.Println(testFile)
+	var testFile *os.File
 
 	totalPackets := 0
 	totalSize := 0
 
+	packets = make(map[string]*packetDetails)
 	doneChan := make(chan error, 1)
 	ctx := context.Background()
 
 	now := time.Now()
+	pn := 0
+
+	done := false
+
+	name := ""
 
 	go func() {
 
@@ -177,21 +183,94 @@ func main() {
 
 			n, err := l.Read(databuf)
 			if err != nil {
-				doneChan <- err
-				break
+				if err, ok := err.(net.Error); ok && err.Timeout() {
+
+					fmt.Println("Done with ", name, " ", pn)
+					start := packets[name].Lowest
+					lost := 0
+					for i := start; i < packets[name].Highest; i++ {
+						if _, ok := packets[name].All[i]; ok {
+							//fmt.Println("duplicate packet number ", packetNumber)
+						} else {
+							lost++
+							fmt.Print(i, " ")
+						}
+					}
+					fmt.Println()
+					fmt.Println("Lost packets ", lost)
+					done = true
+					n = pn
+				} else {
+					doneChan <- err
+					break
+				}
+			} else {
+				l.SetReadDeadline(time.Now().Add(time.Millisecond * 500))
+				pn = n
 			}
 			if totalPackets == 0 {
 				now = time.Now()
 			}
-			totalPackets += 1
-			totalSize += n
-			fw, err := testFile.Write(databuf[:n])
-			if err != nil {
-				panic(err)
+			if databuf[0]&0x32 == 0 {
+				fmt.Println("Is multicast header ", n)
+				reader := bufio.NewReader(strings.NewReader(string(databuf[0:n]) + "\r\n"))
+				tp := textproto.NewReader(reader)
+
+				mimeHeader, err := tp.ReadMIMEHeader()
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				// http.Header and textproto.MIMEHeader are both just a map[string][]string
+				httpHeader := http.Header(mimeHeader)
+				log.Println(httpHeader)
+				name = httpHeader.Get("filename")
+				testFile, err = os.Create("_" + name)
+				if err != nil {
+					fmt.Println("Error creating file", err)
+				}
+				contentLenght, err := strconv.ParseInt(httpHeader.Get("Content-Length"), 10, 64)
+				packets[name] = &packetDetails{
+					Lowest:        65535,
+					Highest:       0,
+					ContentLength: contentLenght,
+					ActualLenght:  0,
+					All:           make(map[uint16][]byte),
+				}
+
+			} else if databuf[0] == 0x30 || databuf[0]&0x30 == 0 || databuf[0]&0x31 == 0 {
+
+				packetNumberBytes := databuf[1:3]
+				packetNumber := binary.LittleEndian.Uint16(packetNumberBytes)
+
+				totalPackets += 1
+				fw, err := testFile.Write(databuf[3:pn])
+				if err != nil {
+					panic(err)
+				}
+				totalSize += fw
+				if false {
+					fmt.Println(fw)
+				}
+				if _, ok := packets[name]; ok {
+					if packets[name].Lowest > packetNumber {
+						packets[name].Lowest = packetNumber
+					}
+					if packets[name].Highest < packetNumber {
+						packets[name].Highest = packetNumber
+					}
+					packets[name].All[packetNumber] = databuf[3:pn]
+					packets[name].ActualLenght += fw
+
+				}
 			}
-			if false {
-				fmt.Println(fw)
+			if done {
+
+				l.SetReadDeadline(time.Now().Add(time.Second * 30))
+				testFile.Close()
+				done = false
 			}
+
 			//dst.Write(buf[:n])
 
 			/*
@@ -215,9 +294,6 @@ func main() {
 
 			//print received data
 			//log.Println(n, "bytes read from", src)
-			if totalPackets%15 == 0 {
-				l.SetReadDeadline(time.Now().Add(time.Second * 1))
-			}
 
 			//fmt.Println("Written ", fn)
 		}
@@ -228,11 +304,31 @@ func main() {
 		fmt.Println("cancelled")
 		err = ctx.Err()
 	case err = <-doneChan:
-		fmt.Println("Done ", err)
+		fmt.Println("Done ", err, " ", testFile.Name())
 		testFile.Close()
 	}
 
 	//wg.Wait()
 	fmt.Println("totalpacket ", totalPackets, " totalsize ", totalSize)
 	fmt.Println("total time ", time.Now().Sub(now))
+}
+
+type packetDetails struct {
+	Lowest        uint16
+	Highest       uint16
+	ContentLength int64
+	ActualLenght  int
+	All           map[uint16][]byte
+	File          *os.File
+}
+
+var packets map[string]*packetDetails
+
+func saveFile(name string) {
+	p := packets[name]
+	fmt.Println("Save file ", name)
+	for _, v := range p.All {
+		p.File.Write(v)
+	}
+	fmt.Println("Done saving ", name)
 }

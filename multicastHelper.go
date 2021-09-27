@@ -1,10 +1,12 @@
 package quic
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -48,7 +50,12 @@ func MultiCast(files chan string, conn *net.UDPConn, hclient *http.Client, addr 
 	//s.MultiCast.Addr, s.UniCast.Addr
 	fmt.Println("Multicasting helper")
 
+	totalPackets = 0
+	packetNumber = 0
+	packetHistory = make([][]byte, 65536)
 	var wg sync.WaitGroup
+	conn.SetWriteBuffer(1439)
+	bw := bufio.NewWriter(conn)
 	wg.Add(1)
 	for {
 		select {
@@ -59,7 +66,7 @@ func MultiCast(files chan string, conn *net.UDPConn, hclient *http.Client, addr 
 
 				//conn.Write()
 
-				success := getTest(file, conn, hclient, addr)
+				success := getTest(file, bw, hclient, addr)
 				if false {
 					fmt.Println(success)
 				}
@@ -91,7 +98,12 @@ func (p *packetPacker) getMultiHeader() *MulticastHeader {
 	return hdr
 }
 
-func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr) bool {
+var packetHistory [][]byte
+
+var totalPackets int64
+var packetNumber uint16
+
+func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr) bool {
 	url := file
 	fmt.Println("Sending ", url)
 
@@ -114,7 +126,6 @@ func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr
 
 	totalData := 0
 	totalMulti := 0
-	totalPackets := 0
 	totalMultiPackets := 0
 	now := time.Now()
 
@@ -129,7 +140,26 @@ func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr
 
 	fmt.Println("src id ", srcConnID, "dst id ", destConnID)
 
-	conn.SetWriteBuffer(1439)
+	mHeaderClone := res.Header.Clone()
+	mHeaderClone.Add("filename", path.Base(file))
+
+	mHeaderClone.Write(bw)
+
+	bw.WriteByte(0x32)
+
+	for name, value := range mHeaderClone {
+		fmt.Printf("%v: %v\n", name, value)
+		for _, v := range value {
+			bw.Write([]byte(name))
+			bw.Write([]byte(": "))
+			bw.Write([]byte(v))
+			bw.Write([]byte("\r\n"))
+		}
+	}
+
+	bw.Flush()
+	bs := make([]byte, 2)
+
 	go func() {
 		//size := 32 * 1024
 
@@ -143,7 +173,7 @@ func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr
 					//testFile.Close()
 					fmt.Println("total time ", time.Now().Sub(now))
 					fmt.Println("Totaldata ", totalData, " Multi ", totalMulti, totalPackets, "/", totalMultiPackets)
-					log.Fatal(err)
+					break
 				} else {
 					log.Fatal("ReadFromUDP failed:", err)
 				}
@@ -189,6 +219,7 @@ func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr
 			}
 
 			totalPackets += 1
+			packetNumber += 1
 			totalData += n
 			/*
 				f, err := os.Open(file)
@@ -202,9 +233,13 @@ func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr
 					panic(err)
 				}
 			*/
-			conn.SetWriteDeadline(time.Now().Add(time.Millisecond * 500))
-			m, _ := conn.Write(buf[0:n])
-			time.Sleep(time.Millisecond * 1)
+			bw.WriteByte(0x30)
+			binary.LittleEndian.PutUint16(bs, packetNumber)
+			packetHistory[packetNumber] = buf[:n]
+			bw.Write(bs)
+			//bw.Write()
+			m, _ := bw.Write(buf[:n])
+			//time.Sleep(time.Millisecond * 1)
 			totalMulti += m
 			totalMultiPackets += 1
 			_, ferr := testFile.Write(buf[0:n])
@@ -215,6 +250,7 @@ func getTest(file string, conn *net.UDPConn, hclient *http.Client, addr net.Addr
 				testFile.Close()
 				break
 			}
+			bw.Flush()
 		}
 
 		/*

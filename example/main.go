@@ -242,8 +242,7 @@ func test(files chan string) {
 	hostString := bind
 	urls := [7]string{"https://" + hostString + "/index0.ts", "https://" + hostString + "/index1.ts", "https://" + hostString + "/index2.ts", "https://" + hostString + "/index3.ts", "https://" + hostString + "/index4.ts", "https://" + hostString + "/index5.ts", "https://" + hostString + "/index6.ts"}
 
-	for i = 0; i < 1; i++ {
-		time.Sleep(time.Second * 2)
+	for i = 0; i < 2; i++ {
 		fmt.Println("testing ", urls[i])
 
 		if i%3 == 0 {
@@ -253,6 +252,7 @@ func test(files chan string) {
 		}
 		//files <- urls[i]
 		go send(files, urls[i])
+		time.Sleep(time.Second * 4)
 	}
 }
 
