@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -174,6 +175,7 @@ func main() {
 	pn := 0
 
 	done := false
+	started := false
 
 	name := ""
 
@@ -196,7 +198,9 @@ func main() {
 							fmt.Print(i, " ")
 						}
 					}
-					fmt.Println()
+					if lost > 0 {
+						fmt.Println()
+					}
 					fmt.Println("Lost packets ", lost)
 					done = true
 					n = pn
@@ -212,7 +216,7 @@ func main() {
 				now = time.Now()
 			}
 			if databuf[0]&0x32 == 0 {
-				fmt.Println("Is multicast header ", n)
+				started = true
 				reader := bufio.NewReader(strings.NewReader(string(databuf[0:n]) + "\r\n"))
 				tp := textproto.NewReader(reader)
 
@@ -223,9 +227,16 @@ func main() {
 
 				// http.Header and textproto.MIMEHeader are both just a map[string][]string
 				httpHeader := http.Header(mimeHeader)
-				log.Println(httpHeader)
-				name = httpHeader.Get("filename")
-				testFile, err = os.Create("_" + name)
+				//log.Println(httpHeader)
+				name = "video/" + httpHeader.Get("filename")
+				fmt.Println(name)
+
+				err = ensureDir(path.Dir(name))
+				if err != nil {
+					panic(err)
+				}
+
+				testFile, err = os.Create(name)
 				if err != nil {
 					fmt.Println("Error creating file", err)
 				}
@@ -238,7 +249,7 @@ func main() {
 					All:           make(map[uint16][]byte),
 				}
 
-			} else if databuf[0] == 0x30 || databuf[0]&0x30 == 0 || databuf[0]&0x31 == 0 {
+			} else if databuf[0] == 0x30 || databuf[0]&0x30 == 0 || databuf[0]&0x31 == 0 && started {
 
 				packetNumberBytes := databuf[1:3]
 				packetNumber := binary.LittleEndian.Uint16(packetNumberBytes)
@@ -331,4 +342,14 @@ func saveFile(name string) {
 		p.File.Write(v)
 	}
 	fmt.Println("Done saving ", name)
+}
+
+func ensureDir(dirName string) error {
+	err := os.Mkdir(dirName, 0755)
+
+	if err == nil || os.IsExist(err) {
+		return nil
+	} else {
+		return err
+	}
 }

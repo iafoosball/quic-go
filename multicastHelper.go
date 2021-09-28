@@ -11,10 +11,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"net/http"
-	"os"
-	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -53,24 +52,19 @@ func MultiCast(files chan string, conn *net.UDPConn, hclient *http.Client, addr 
 	totalPackets = 0
 	packetNumber = 0
 	packetHistory = make([][]byte, 65536)
-	var wg sync.WaitGroup
+	var mu sync.Mutex
 	conn.SetWriteBuffer(1439)
 	bw := bufio.NewWriter(conn)
-	wg.Add(1)
 	for {
 		select {
 		case file := <-files:
 			fmt.Println(file)
-			if !strings.Contains(file, "m3u8") {
-				//url := "https://" + s.UniCast.Addr + "/" + file
-
-				//conn.Write()
-
-				success := getTest(file, bw, hclient, addr)
-				if false {
-					fmt.Println(success)
-				}
-
+			mu.Lock()
+			success := getTest(file, bw, hclient, addr)
+			fmt.Println("Got file ", file)
+			mu.Unlock()
+			if !success {
+				panic("Big fail " + file)
 			}
 		default:
 		}
@@ -105,7 +99,16 @@ var packetNumber uint16
 
 func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr) bool {
 	url := file
-	fmt.Println("Sending ", url)
+	tempfile := strings.ReplaceAll(url, "https://", "")
+	file = ""
+	for i, s := range strings.Split(tempfile, "/") {
+		if i > 0 {
+			file = file + "/" + s
+
+		}
+	}
+	file = file[1:]
+	fmt.Println(file)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -118,11 +121,12 @@ func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr)
 		log.Fatal(err)
 		return false
 	}
-	testFile, err := os.Create(path.Base(url))
-	if err != nil {
-		fmt.Println("Error creating file", err)
-	}
-	fmt.Println(testFile)
+	/*
+		testFile, err := os.Create(path.Base(url))
+		if err != nil {
+			fmt.Println("Error creating file", err)
+		}
+	*/
 
 	totalData := 0
 	totalMulti := 0
@@ -141,12 +145,11 @@ func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr)
 	fmt.Println("src id ", srcConnID, "dst id ", destConnID)
 
 	mHeaderClone := res.Header.Clone()
-	mHeaderClone.Add("filename", path.Base(file))
+	mHeaderClone.Add("filename", file)
 
 	mHeaderClone.Write(bw)
 
 	bw.WriteByte(0x32)
-
 	for name, value := range mHeaderClone {
 		fmt.Printf("%v: %v\n", name, value)
 		for _, v := range value {
@@ -156,133 +159,48 @@ func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr)
 			bw.Write([]byte("\r\n"))
 		}
 	}
-
 	bw.Flush()
+
 	bs := make([]byte, 2)
 
-	go func() {
-		//size := 32 * 1024
+	//go func() {
+	//size := 32 * 1024
 
-		//buf := make([]byte, size)
-		buf := make([]byte, 1439)
-		for {
-			cont := true
-			n, err := res.Body.Read(buf)
-			if err != nil {
-				if err == io.EOF {
-					//testFile.Close()
-					fmt.Println("total time ", time.Now().Sub(now))
-					fmt.Println("Totaldata ", totalData, " Multi ", totalMulti, totalPackets, "/", totalMultiPackets)
-					break
-				} else {
-					log.Fatal("ReadFromUDP failed:", err)
-				}
-			}
-
-			if false {
-				short := false
-				if buf[0]&0x40 == 0 {
-					fmt.Println("Would be error 0x40 ", n)
-				} else if buf[0]&0x31 == 0 {
-					fmt.Println("Would be error 0x31 ", n)
-				} else if buf[0]&0x30 == 0 {
-					fmt.Println("Would be error 0x30 ", n)
-				} else {
-					hdr, data, _, err := wire.ParsePacket(buf[:n], 0)
-					if err != nil {
-						//log.Panic(err)
-						fmt.Println("Would be error 2", buf[0], n)
-						cont = false
-					}
-					extHdr, err := unPackMultiShortHeaderPacket(hdr, time.Now(), data)
-					if err != nil {
-						fmt.Println("Would be error ", buf[0], n)
-						//log.Panic(err)
-						cont = false
-					}
-					if cont {
-						fmt.Println(extHdr.PacketNumber)
-					}
-				}
-				for i := 43; i < 60; i++ {
-					if buf[i]&0x80 == 0 {
-						short = true
-						//	fmt.Printf(" %x ", buf[i])
-					}
-
-				}
-				if !short {
-					//fmt.Print("Not short header")
-				} else if false {
-
-				}
-			}
-
-			totalPackets += 1
-			packetNumber += 1
-			totalData += n
-			/*
-				f, err := os.Open(file)
-				if err != nil {
-					panic(err)
-				}
-				defer f.Close()
-
-				d, err := f.Stat()
-				if err != nil {
-					panic(err)
-				}
-			*/
-			bw.WriteByte(0x30)
-			binary.LittleEndian.PutUint16(bs, packetNumber)
-			packetHistory[packetNumber] = buf[:n]
-			bw.Write(bs)
-			//bw.Write()
-			m, _ := bw.Write(buf[:n])
-			//time.Sleep(time.Millisecond * 1)
-			totalMulti += m
-			totalMultiPackets += 1
-			_, ferr := testFile.Write(buf[0:n])
-			if ferr != nil {
-				log.Fatal("File error ", ferr)
-			}
-			if err == io.EOF {
-				testFile.Close()
-				break
-			}
-			bw.Flush()
-		}
-
-		/*
-			b := make(buf)
-			n, err := res.Body.Read(buf)
-			if err != nil {
-				if err == io.EOF {
-					//testFile.Close()
-				} else {
-					log.Fatal("ReadFromBody failed:", err)
-				}
-			}
-			_, ferr := testFile.Write(buf[0:n])
-			if ferr != nil {
-				log.Fatal("File error ", ferr)
-			}
-			if err == io.EOF {
-				testFile.Close()
-				break
-			}
-		*/
-		//fmt.Println("Written ", n)
-
-	}()
-	//pass := &PassThru{RemoteAddr: addr}
-	/*
-		_, err = io.Copy(testFile, res.Body)
+	//buf := make([]byte, size)
+	buf := make([]byte, 1439)
+	for {
+		n, err := res.Body.Read(buf)
 		if err != nil {
-			log.Fatal(err)
-			return false
+			if err == io.EOF {
+				//testFile.Close()
+				break
+			} else {
+				log.Fatal("ReadFromUDP failed:", err)
+			}
 		}
-	*/
+
+		totalPackets += 1
+		packetNumber += 1
+		totalData += n
+
+		bw.WriteByte(0x30)
+		binary.LittleEndian.PutUint16(bs, packetNumber)
+		packetHistory[packetNumber] = buf[:n]
+		bw.Write(bs)
+		//bw.Write()
+		m, _ := bw.Write(buf[:n])
+		//time.Sleep(time.Millisecond * 1)
+		totalMulti += m
+		totalMultiPackets += 1
+		bw.Flush()
+	}
+
+	totalTime := time.Now().Sub(now)
+	var rate float64
+
+	rate = (float64(totalData) / totalTime.Seconds()) / math.Pow(10, 6)
+	fmt.Println("total time ", totalTime, " in ", rate, " MB/s")
+	fmt.Println("Totaldata ", totalData, " Multi ", totalMulti, totalPackets, "/", totalMultiPackets)
 
 	if res.StatusCode == 200 {
 		fmt.Println("Received ", url, res.Header["Content-Length"])
