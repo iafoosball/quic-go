@@ -252,7 +252,7 @@ func test(files chan string) {
 		}
 		//files <- urls[i]
 		go send(files, urls[i])
-		time.Sleep(time.Second * 4)
+		time.Sleep(time.Second * 3)
 	}
 }
 
