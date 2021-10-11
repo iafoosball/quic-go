@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,8 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -44,6 +47,8 @@ type ConnPassTrough struct {
 	DataReadStream  chan []byte
 }
 
+var pt *PassThru
+
 func MultiCast(files chan string, conn *net.UDPConn, hclient *http.Client, addr net.Addr) {
 	//s.logger.Infof("Started multicast: ")
 	//s.MultiCast.Addr, s.UniCast.Addr
@@ -51,10 +56,15 @@ func MultiCast(files chan string, conn *net.UDPConn, hclient *http.Client, addr 
 
 	totalPackets = 0
 	packetNumber = 0
-	packetHistory = make([][]byte, 65536)
+	packetHistory := make(map[uint16][]byte)
 	var mu sync.Mutex
-	conn.SetWriteBuffer(1439)
-	bw := bufio.NewWriter(conn)
+	conn.SetWriteBuffer(1436)
+	pt = &PassThru{}
+	pt.UDPConn = conn
+	pt.Packet = 0
+	pt.PacketHistory = packetHistory
+
+	bw := bufio.NewWriter(pt)
 	for {
 		select {
 		case file := <-files:
@@ -64,7 +74,7 @@ func MultiCast(files chan string, conn *net.UDPConn, hclient *http.Client, addr 
 			fmt.Println("Got file ", file)
 			mu.Unlock()
 			if !success {
-				panic("Big fail " + file)
+				fmt.Println("Big fail " + file)
 			}
 		default:
 		}
@@ -92,107 +102,193 @@ func (p *packetPacker) getMultiHeader() *MulticastHeader {
 	return hdr
 }
 
-var packetHistory [][]byte
+type simplePacket struct {
+	PacketNumber uint16
+	Data         []byte
+	Buf          bytes.Buffer
+}
 
-var totalPackets int64
+var totalPackets uint64
 var packetNumber uint16
 
 func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr) bool {
 	url := file
-	tempfile := strings.ReplaceAll(url, "https://", "")
-	file = ""
-	for i, s := range strings.Split(tempfile, "/") {
-		if i > 0 {
-			file = file + "/" + s
+	request := true
 
-		}
-	}
-	file = file[1:]
-	fmt.Println(file)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		fmt.Println("Error ", err)
-		return false
-	}
-	req.Header.Set("Multicast", "true")
-	res, err := hclient.Do(req)
-	if err != nil {
-		log.Fatal(err)
-		return false
-	}
-	/*
-		testFile, err := os.Create(path.Base(url))
-		if err != nil {
-			fmt.Println("Error creating file", err)
-		}
-	*/
-
-	totalData := 0
-	totalMulti := 0
+	var totalData int64
+	totalData = 0
+	var m int64
+	var statuscode int
+	var filesize interface{}
+	//totalMulti := 0
 	totalMultiPackets := 0
 	now := time.Now()
 
-	srcConnID, err := generateConnectionID(4)
-	if err != nil {
-		panic(err)
-	}
-	destConnID, err := generateConnectionIDForInitial()
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("src id ", srcConnID, "dst id ", destConnID)
-
-	mHeaderClone := res.Header.Clone()
-	mHeaderClone.Add("filename", file)
-
-	mHeaderClone.Write(bw)
-
-	bw.WriteByte(0x32)
-	for name, value := range mHeaderClone {
-		fmt.Printf("%v: %v\n", name, value)
-		for _, v := range value {
-			bw.Write([]byte(name))
-			bw.Write([]byte(": "))
-			bw.Write([]byte(v))
-			bw.Write([]byte("\r\n"))
-		}
-	}
-	bw.Flush()
-
-	bs := make([]byte, 2)
+	totalPackets += 1
+	packetNumber += 1
 
 	//go func() {
-	//size := 32 * 1024
+	size := 1 * 1436
 
-	//buf := make([]byte, size)
-	buf := make([]byte, 1439)
-	for {
-		n, err := res.Body.Read(buf)
+	buf := make([]byte, size)
+	if !strings.Contains(file, "https://") {
+		request = false
+
+		fileStat, err := os.Open(file)
 		if err != nil {
-			if err == io.EOF {
-				//testFile.Close()
-				break
-			} else {
-				log.Fatal("ReadFromUDP failed:", err)
+
+		}
+		info, err := fileStat.Stat()
+		if err != nil {
+
+		}
+		filesize = info.Size()
+		bw.WriteByte(0x32)
+
+		split := strings.Split(file, "//")
+		filename := file
+		if len(split) > 1 {
+			filename = split[1]
+		}
+
+		fmt.Println(file)
+
+		header := http.Header{}
+		header.Add("Accept-Ranges", "bytes")
+		header.Add("Filename", filename)
+		header.Add("Content-Length", strconv.Itoa(int(info.Size())))
+		header.Add("Multicast", "true")
+		header.Add("Content-Type", "text/vnd.qt.linguist; charset=utf-8")
+		header.Add("Accept-Ranges", "bytes")
+		header.Add("Filename", filename)
+		header.Add("Content-Length", strconv.Itoa(int(info.Size())))
+		header.Add("Multicast", "true")
+		header.Add("Content-Type", "text/vnd.qt.linguist; charset=utf-8")
+
+		bw.WriteByte(0x32)
+		for name, value := range header {
+			fmt.Printf("%v: %v\n", name, value)
+			for _, v := range value {
+				bw.Write([]byte(name))
+				bw.Write([]byte(": "))
+				bw.Write([]byte(v))
+				bw.Write([]byte("\r\n"))
 			}
 		}
 
-		totalPackets += 1
-		packetNumber += 1
-		totalData += n
-
-		bw.WriteByte(0x30)
-		binary.LittleEndian.PutUint16(bs, packetNumber)
-		packetHistory[packetNumber] = buf[:n]
-		bw.Write(bs)
-		//bw.Write()
-		m, _ := bw.Write(buf[:n])
-		//time.Sleep(time.Millisecond * 1)
-		totalMulti += m
-		totalMultiPackets += 1
 		bw.Flush()
+		packetNumber += 1
+
+		bs := make([]byte, 2)
+		multicaster := &Multicaster{bw, bs, packetNumber}
+		m, err = copyBuffer(multicaster, fileStat, buf)
+		if err != nil {
+			log.Fatal(err)
+			return false
+		}
+		totalData += m
+		totalPackets += uint64(multicaster.Packet)
+		packetNumber = multicaster.Packet
+
+		fileStat.Close()
+		//write empty packet if last packet was lost
+		for i := 0; i < 0; i++ {
+
+			packetNumber++
+			bw.WriteByte(0x30)
+			binary.LittleEndian.PutUint16(bs, packetNumber)
+
+			bw.Write(bs)
+
+			pt.PacketHistory[packetNumber] = []byte(string(""))
+			pt.Packet = packetNumber
+			totalPackets += 1
+			bw.Flush()
+		}
+		statuscode = 200
+	}
+	if request {
+
+		tempfile := strings.ReplaceAll(url, "https://", "")
+		file = ""
+		for i, s := range strings.Split(tempfile, "/") {
+			if i > 0 {
+				file = file + "/" + s
+
+			}
+		}
+		file = file[1:]
+		fmt.Println(file)
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			fmt.Println("Error ", err)
+			return false
+		}
+		req.Header.Add("Multicast", "true")
+		res, err := hclient.Do(req)
+		if err != nil {
+			log.Fatal(err)
+			return false
+		}
+		srcConnID, err := generateConnectionID(4)
+		if err != nil {
+			panic(err)
+		}
+		destConnID, err := generateConnectionIDForInitial()
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println("src id ", srcConnID, "dst id ", destConnID, " addr ", addr)
+
+		filesize = res.Header["Content-Length"]
+		mHeaderClone := res.Header.Clone()
+		mHeaderClone.Add("Filename", file)
+		mHeaderClone.Add("Filename", file)
+
+		mHeaderClone.Write(bw)
+
+		bw.WriteByte(0x32)
+		for name, value := range mHeaderClone {
+			fmt.Printf("%v: %v\n", name, value)
+			for _, v := range value {
+				bw.Write([]byte(name))
+				bw.Write([]byte(": "))
+				bw.Write([]byte(v))
+				bw.Write([]byte("\r\n"))
+			}
+		}
+		bw.Flush()
+
+		bs := make([]byte, 2)
+		multicaster := &Multicaster{bw, bs, packetNumber}
+		m, err = copyBuffer(multicaster, res.Body, buf)
+		if err != nil {
+			log.Fatal(err)
+			return false
+		}
+
+		//write empty packet if last packet was lost
+		for i := 0; i < 0; i++ {
+
+			packetNumber++
+			bw.WriteByte(0x30)
+			binary.LittleEndian.PutUint16(bs, packetNumber)
+
+			bw.Write(bs)
+
+			pt.PacketHistory[packetNumber] = []byte{}
+			pt.Packet = packetNumber
+			totalPackets += 1
+			bw.Flush()
+		}
+
+		statuscode = res.StatusCode
+		totalData += m
+		totalPackets += uint64(multicaster.Packet)
+		packetNumber = multicaster.Packet
+		defer res.Body.Close()
 	}
 
 	totalTime := time.Now().Sub(now)
@@ -200,15 +296,85 @@ func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr)
 
 	rate = (float64(totalData) / totalTime.Seconds()) / math.Pow(10, 6)
 	fmt.Println("total time ", totalTime, " in ", rate, " MB/s")
-	fmt.Println("Totaldata ", totalData, " Multi ", totalMulti, totalPackets, "/", totalMultiPackets)
+	fmt.Println("Totaldata ", totalData, " Multi ", m, totalPackets, "/", totalMultiPackets)
 
-	if res.StatusCode == 200 {
-		fmt.Println("Received ", url, res.Header["Content-Length"])
+	if statuscode == 200 {
+		fmt.Println("Received ", file, " ", filesize)
 		return true
 	} else {
-		fmt.Println("Error code ", res.StatusCode)
+		fmt.Println("Error code ", statuscode)
 		return false
 	}
+}
+
+type Multicaster struct {
+	Pass      *bufio.Writer
+	PacketBuf []byte
+	Packet    uint16
+}
+
+func (m *Multicaster) Write(p []byte) (int, error) {
+	//var err error
+	//pt.total += int64(len(p))
+	//fmt.Println("Read", p, "bytes for a total of", pt.total)
+
+	m.Pass.WriteByte(0x30)
+	binary.LittleEndian.PutUint16(m.PacketBuf, m.Packet)
+
+	m.Pass.Write(m.PacketBuf)
+	n, err := m.Pass.Write(p)
+	if err != nil {
+		return n, err
+	}
+	//pt.PacketHistory[m.Packet] = []byte(string(p))
+	pt.Packet = m.Packet
+	m.Packet += 1
+	m.Pass.Flush()
+
+	return n, err
+}
+
+//Buffer from io.Copy
+func copyBuffer(dst io.Writer, src io.Reader, buf []byte) (written int64, err error) {
+	if buf == nil {
+		size := 32 * 1024
+		if l, ok := src.(*io.LimitedReader); ok && int64(size) > l.N {
+			if l.N < 1 {
+				size = 1
+			} else {
+				size = int(l.N)
+			}
+		}
+		buf = make([]byte, size)
+	}
+	for {
+		nr, er := src.Read(buf)
+		if nr > 0 {
+			nw, ew := dst.Write(buf[0:nr])
+			if nw < 0 || nr < nw {
+				nw = 0
+				if ew == nil {
+					ew = io.ErrUnexpectedEOF
+				}
+			}
+			written += int64(nw)
+			if ew != nil {
+				err = ew
+				break
+			}
+			if nr != nw {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if er != nil {
+			if er != io.EOF {
+				err = er
+			}
+			break
+		}
+	}
+	return written, err
 }
 
 func UnpackMulti(hdr *wire.Header, rcvTime time.Time, data []byte) (*unpackedPacket, error) {
@@ -291,39 +457,56 @@ func unpackMultiHeader(hdr *wire.Header, data []byte, version protocol.VersionNu
 }
 
 type PassThru struct {
-	Reader io.Reader
-	Writer io.Writer
-	total  int64 // Total # of bytes transferred
-	done   bool  // Total # of bytes transferred
-	//File     *os.File
-	buf        []byte // contents are the bytes buf[off : len(buf)]
-	off        int    // read at &buf[off], write at &buf[len(buf)]
-	RemoteAddr net.Addr
+	*net.UDPConn
+	io.Reader
+	Packet        uint16
+	PacketHistory map[uint16][]byte
+	mu            sync.Mutex
+}
+
+func (pt *PassThru) retransmit(str *bufio.Writer, number uint16) {
+	pt.mu.Lock()
+	p := pt.PacketHistory[number]
+	//for i, p := range pt.PacketHistory {
+	if len(pt.PacketHistory[number]) > 0 {
+		fmt.Println("Data ", hex.EncodeToString(p[0:100]))
+		fmt.Println("Number ", number, " pn ", binary.LittleEndian.Uint16(p[1:3]))
+		p[0] = 0x34
+		str.Write(p)
+		str.Flush()
+	}
+	pt.mu.Unlock()
+	//}
 }
 
 func (pt *PassThru) Write(p []byte) (int, error) {
-	var err error
-	pt.total += int64(len(p))
+	//var err error
+	//pt.total += int64(len(p))
 	//fmt.Println("Read", p, "bytes for a total of", pt.total)
+	pt.mu.Lock()
+	n, err := pt.UDPConn.Write(p)
+	if err == nil {
+		pt.PacketHistory[pt.Packet] = []byte(string(p))
+	}
+	pt.mu.Unlock()
 
-	return len(p), err
+	return n, err
 }
 
 func (pt *PassThru) Read(p []byte) (int, error) {
+
 	n, err := pt.Reader.Read(p)
-	if err == nil {
-		pt.total += int64(n)
-		fmt.Println("Read", n, "bytes for a total of", pt.total)
+	if err != nil {
+		return n, err
 	}
 	fmt.Println("received ", n)
-	//proccesedPacket, wh, err := c.session.handleMultiPacket(r)
-
-	if int64(n) == pt.total {
-		//pt.Reader.CancelRead(0)
-		fmt.Println("Done pass")
-		pt.done = true
-	}
 	return n, err
+}
+
+func Retransmit(str *bufio.Writer, number uint16) {
+	fmt.Println("Retransmit ", number)
+
+	pt.retransmit(str, number)
 }
 
 func ListenMulti(conn net.PacketConn, tlsConf *tls.Config, config *Config) (Listener, error) {

@@ -273,7 +273,7 @@ func (s *baseServer) accept(ctx context.Context) (quicSession, error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case sess := <-s.sessionQueue:
-		fmt.Println("Accepted ", sess)
+		//fmt.Println("Accepted ", sess)
 		atomic.AddInt32(&s.sessionQueueLen, -1)
 		return sess, nil
 	case <-s.errorChan:

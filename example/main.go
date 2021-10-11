@@ -22,7 +22,6 @@ import (
 
 	"github.com/iafoosball/quic-go"
 	"github.com/iafoosball/quic-go/http3"
-	"github.com/iafoosball/quic-go/internal/testdata"
 	"github.com/iafoosball/quic-go/internal/utils"
 	"github.com/iafoosball/quic-go/logging"
 	"github.com/iafoosball/quic-go/multicast"
@@ -137,6 +136,8 @@ func setupHandler(www string) http.Handler {
 	return mux
 }
 
+var www *string
+
 func main() {
 	// defer profile.Start().Stop()
 	go func() {
@@ -147,7 +148,7 @@ func main() {
 	verbose := flag.Bool("v", false, "verbose")
 	bs := binds{}
 	flag.Var(&bs, "bind", "bind to")
-	www := flag.String("www", "", "www data")
+	www = flag.String("www", "", "www data")
 	cert := flag.String("cert", "/home/jones/Documents/go-hls/cert/", "Certfolder")
 	mACKaddr := flag.String("ack", "192.168.42.52:1234", "ack address")
 	tcp := flag.Bool("tcp", false, "also listen on TCP")
@@ -218,11 +219,12 @@ func main() {
 				err = server.ListenAndServeTLSMultiFolder(certFile, keyFile, bCap, *mACKaddr, "224.42.42.1:1235", ifat, handler, files)
 
 			} else {
+				certFile, keyFile := *cert+"server.crt", *cert+"server.key"
 				server := http3.Server{
 					Server:     &http.Server{Handler: handler, Addr: bCap},
 					QuicConfig: quicConf,
 				}
-				err = server.ListenAndServeTLS(testdata.GetCertificatePaths())
+				err = server.ListenAndServeTLS(certFile, keyFile)
 			}
 			if err != nil {
 				fmt.Println(err)
@@ -241,9 +243,12 @@ func test(files chan string) {
 	fmt.Println("test started")
 	hostString := bind
 	urls := [7]string{"https://" + hostString + "/index0.ts", "https://" + hostString + "/index1.ts", "https://" + hostString + "/index2.ts", "https://" + hostString + "/index3.ts", "https://" + hostString + "/index4.ts", "https://" + hostString + "/index5.ts", "https://" + hostString + "/index6.ts"}
+	filepath := [7]string{*www + "index0.ts", *www + "index1.ts", *www + "index2.ts", *www + "index3.ts", *www + "index4.ts", *www + "index5.ts", *www + "index6.ts"}
 
 	for i = 0; i < 2; i++ {
+		time.Sleep(time.Millisecond * 1000)
 		fmt.Println("testing ", urls[i])
+		fmt.Println("testing ", filepath[i])
 
 		if i%3 == 0 {
 			//	SetMulti(true)
@@ -252,7 +257,7 @@ func test(files chan string) {
 		}
 		//files <- urls[i]
 		go send(files, urls[i])
-		time.Sleep(time.Second * 3)
+		//go send(files, filepath[i])
 	}
 }
 

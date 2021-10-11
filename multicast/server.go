@@ -1,11 +1,15 @@
 package multicast
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -16,6 +20,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/iafoosball/quic-go"
 	"github.com/iafoosball/quic-go/http3"
@@ -24,6 +29,7 @@ import (
 	"github.com/iafoosball/quic-go/internal/protocol"
 	"github.com/iafoosball/quic-go/internal/utils"
 	"github.com/iafoosball/quic-go/logging"
+	"github.com/iafoosball/quic-go/quicvarint"
 	"golang.org/x/net/ipv4"
 )
 
@@ -259,7 +265,7 @@ func (s *MulticastServer) ListenAndServeTLSMultiFolder(certFile, keyFile, addr, 
 	if err != nil {
 		return err
 	}
-	defer udpConn.Close()
+	defer multiACKudpConn.Close()
 
 	readUDP := make(chan []byte)
 	writeUDP := make(chan []byte)
@@ -319,7 +325,7 @@ func (s *MulticastServer) ListenAndServeTLSMultiFolder(certFile, keyFile, addr, 
 		w.Header().Add("multicast", multiAddr)
 		handler.ServeHTTP(w, r)
 	})
-	multihttpServer.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	multiACKquicServer.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		quicServer.SetQuicHeaders(w.Header())
 		w.Header().Add("multicast-ack", multiACKAddr)
 		w.Header().Add("multicast", multiAddr)
@@ -337,10 +343,10 @@ func (s *MulticastServer) ListenAndServeTLSMultiFolder(certFile, keyFile, addr, 
 		qErr <- quicServer.Serve(udpConn)
 	}()
 	go func() {
-		aErr <- multiACKquicServer.ListenACK(multiACKudpConn)
+		//	aErr <- multiACKquicServer.ListenACK(multiACKudpConn)
 	}()
 	go func() {
-		mErr <- multicastServer.ServeFolder(mUdpConn, files)
+		mErr <- multicastServer.ServeFolder(mUdpConn, multiACKudpConn, files)
 	}()
 
 	go func() {
@@ -454,12 +460,12 @@ func getMaxPacketSize(addr net.Addr) protocol.ByteCount {
 // Serve an existing UDP connection.
 // It is possible to reuse the same connection for outgoing connections.
 // Closing the server does not close the packet conn.
-func (s *MulticastServer) ServeFolder(conn *net.UDPConn, folder chan string) error {
+func (s *MulticastServer) ServeFolder(conn *net.UDPConn, ackConn *net.UDPConn, folder chan string) error {
 	fmt.Println("Serve folder")
-	return s.serveImpl(s.TLSConfig, conn, folder)
+	return s.serveImpl(s.TLSConfig, conn, ackConn, folder)
 }
 
-func (s *MulticastServer) serveImpl(tlsConf *tls.Config, conn *net.UDPConn, folder chan string) error {
+func (s *MulticastServer) serveImpl(tlsConf *tls.Config, conn *net.UDPConn, ackConn *net.UDPConn, folder chan string) error {
 	if s.closed.Get() {
 		return http.ErrServerClosed
 	}
@@ -513,28 +519,118 @@ func (s *MulticastServer) serveImpl(tlsConf *tls.Config, conn *net.UDPConn, fold
 	if s.EnableDatagrams {
 		quicConf.EnableDatagrams = true
 	}
-	if conn == nil {
+	ackConn.SetWriteBuffer(1436)
+	if ackConn == nil {
 		fmt.Println("Conn nil ")
 		ln, err = quicListenAddr(s.multiAddr, baseConf, quicConf)
 	} else {
-		ln, err = quicListen(conn, baseConf, quicConf)
+		ln, err = quicListen(ackConn, baseConf, quicConf)
 	}
 	if err != nil {
 		return err
 	}
-	log.Println("Serve multi on ", s.multiAddr)
+	log.Println("Serve multi on ", s.multiAddr, " ", ln)
 
 	go s.multiCast(conn, folder)
 
 	for {
+
 		sess, err := ln.Accept(context.Background())
 		if err != nil {
 			return err
 		}
-		fmt.Println("%+v", sess)
+		fmt.Println("So far so good")
+
+		go s.handleACK(sess, ackConn)
 		//go s.handleConn(sess)
 	}
+}
 
+const settingDatagram = 0x276
+
+type settingsFrame struct {
+	Datagram bool
+	other    map[uint64]uint64 // all settings that we don't explicitly recognize
+}
+
+func (f *settingsFrame) Write(b *bytes.Buffer) {
+	quicvarint.Write(b, 0x4)
+	var l protocol.ByteCount
+	for id, val := range f.other {
+		l += quicvarint.Len(id) + quicvarint.Len(val)
+	}
+	if f.Datagram {
+		l += quicvarint.Len(settingDatagram) + quicvarint.Len(1)
+	}
+	quicvarint.Write(b, uint64(l))
+	if f.Datagram {
+		quicvarint.Write(b, settingDatagram)
+		quicvarint.Write(b, 1)
+	}
+	for id, val := range f.other {
+		quicvarint.Write(b, id)
+		quicvarint.Write(b, val)
+	}
+}
+
+func (s *MulticastServer) handleACK(sess quic.Session, ackConn *net.UDPConn) {
+
+	str, err := sess.OpenUniStream()
+	if err != nil {
+		s.logger.Debugf("Opening the control stream failed.")
+		return
+	}
+	buf := &bytes.Buffer{}
+	quicvarint.Write(buf, streamTypeControlStream) // stream type
+	(&settingsFrame{Datagram: s.EnableDatagrams}).Write(buf)
+	n, err := str.Write(buf.Bytes())
+	fmt.Println("n ", n, " err ", err)
+
+	ackbuf := make([]byte, 1439)
+
+	fmt.Println("HandleACK")
+	for {
+		stream, err := sess.AcceptStream(context.Background())
+		if err != nil {
+			panic(err)
+		} else {
+			fmt.Println("herre")
+		}
+		buf := make([]byte, 1439)
+		binary.LittleEndian.PutUint16(buf, 0)
+		bw := bufio.NewWriter(stream)
+
+		stream.SetReadDeadline(time.Now().Add(time.Minute * 10))
+
+		go func() {
+			n, err := bw.Write([]byte("Welcome"))
+			if err != nil {
+				fmt.Println("Stream write err  ", err)
+
+			}
+			bw.Flush()
+			fmt.Println("Stream open ", n)
+
+			for {
+				r, err := stream.Read(ackbuf)
+				if err != nil {
+					panic(err)
+				}
+				if ackbuf[0] == 0x33 {
+					fmt.Println("Data from ack: ", hex.EncodeToString(ackbuf[:r]))
+
+					for i := 1; i < len(ackbuf[1:r]); i += 2 {
+						packetNumber := binary.LittleEndian.Uint16(ackbuf[i : i+2])
+						fmt.Println("Read ack ", packetNumber)
+						quic.Retransmit(bw, packetNumber)
+					}
+
+				} else {
+					fmt.Println(string(ackbuf[:r]))
+				}
+			}
+		}()
+	}
 }
 
 func (s *MulticastServer) multiCast(conn *net.UDPConn, files chan string) {
@@ -570,27 +666,6 @@ func (s *MulticastServer) multiCast(conn *net.UDPConn, files chan string) {
 	}
 
 	go quic.MultiCast(files, conn, hclient, s.RemoteAddr)
-	/*
-		time.Sleep(time.Second * 2)
-
-		for {
-			select {
-			case file := <-files:
-				fmt.Println("here#2", file)
-				if !strings.Contains(file, "m3u8") {
-					//url := "https://" + s.UniCast.Addr + "/" + file
-					success := getTest(file, hclient)
-					if false {
-						fmt.Println(success)
-					}
-
-				}
-			default:
-			}
-
-		}
-
-	*/
 
 }
 
