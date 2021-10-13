@@ -20,7 +20,6 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/iafoosball/quic-go"
 	"github.com/iafoosball/quic-go/http3"
@@ -600,8 +599,6 @@ func (s *MulticastServer) handleACK(sess quic.Session, ackConn *net.UDPConn) {
 		binary.LittleEndian.PutUint16(buf, 0)
 		bw := bufio.NewWriter(stream)
 
-		stream.SetReadDeadline(time.Now().Add(time.Minute * 10))
-
 		go func() {
 			n, err := bw.Write([]byte("Welcome"))
 			if err != nil {
@@ -616,17 +613,20 @@ func (s *MulticastServer) handleACK(sess quic.Session, ackConn *net.UDPConn) {
 				if err != nil {
 					panic(err)
 				}
+				if ackbuf[0] == 0x35 {
+					bw.WriteByte(0x36)
+					bw.Flush()
+				}
 				if ackbuf[0] == 0x33 {
 					fmt.Println("Data from ack: ", hex.EncodeToString(ackbuf[:r]))
 
 					for i := 1; i < len(ackbuf[1:r]); i += 2 {
 						packetNumber := binary.LittleEndian.Uint16(ackbuf[i : i+2])
-						fmt.Println("Read ack ", packetNumber)
 						quic.Retransmit(bw, packetNumber)
 					}
 
 				} else {
-					fmt.Println(string(ackbuf[:r]))
+
 				}
 			}
 		}()

@@ -6,6 +6,7 @@ require (
 	github.com/cheekybits/genny v1.0.0
 	github.com/francoispqt/gojay v1.2.13
 	github.com/golang/mock v1.6.0
+	github.com/google/uuid v1.3.0 // indirect
 	github.com/marten-seemann/qpack v0.2.1
 	github.com/marten-seemann/qtls-go1-16 v0.1.4
 	github.com/marten-seemann/qtls-go1-17 v0.1.0

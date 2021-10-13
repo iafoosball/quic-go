@@ -191,7 +191,7 @@ func main() {
 	}
 	fmt.Println(ifat)
 
-	files := make(chan string)
+	files := make(chan string, 1)
 
 	go test(files)
 
@@ -244,9 +244,9 @@ func test(files chan string) {
 	hostString := bind
 	urls := [7]string{"https://" + hostString + "/index0.ts", "https://" + hostString + "/index1.ts", "https://" + hostString + "/index2.ts", "https://" + hostString + "/index3.ts", "https://" + hostString + "/index4.ts", "https://" + hostString + "/index5.ts", "https://" + hostString + "/index6.ts"}
 	filepath := [7]string{*www + "index0.ts", *www + "index1.ts", *www + "index2.ts", *www + "index3.ts", *www + "index4.ts", *www + "index5.ts", *www + "index6.ts"}
-
+	time.Sleep(time.Second * 2)
 	for i = 0; i < 2; i++ {
-		time.Sleep(time.Millisecond * 1000)
+		time.Sleep(time.Millisecond * 10)
 		fmt.Println("testing ", urls[i])
 		fmt.Println("testing ", filepath[i])
 

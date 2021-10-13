@@ -3,18 +3,15 @@ package main
 import (
 	"bufio"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/pem"
 	"flag"
 	"fmt"
 	"io"
 	"log"
-	"math/big"
+	"math"
 	"net"
 	"net/http"
 	"net/textproto"
@@ -25,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/iafoosball/quic-go"
 	"github.com/iafoosball/quic-go/http3"
 	"github.com/iafoosball/quic-go/internal/testdata"
@@ -34,67 +32,26 @@ import (
 	"github.com/iafoosball/quic-go/qlog"
 )
 
-// A wrapper for io.Writer that also logs the message.
-type loggingWriter struct{ io.Writer }
-
-func (w loggingWriter) Write(b []byte) (int, error) {
-	fmt.Printf("Server: Got '%s'\n", string(b))
-	return w.Writer.Write(b)
-}
-func echoServer(addr string) error {
-	listener, err := quic.ListenAddr(addr, generateTLSConfig(), nil)
-	if err != nil {
-		return err
-	}
-	sess, err := listener.Accept(context.Background())
-	if err != nil {
-		return err
-	}
-	stream, err := sess.AcceptStream(context.Background())
-	if err != nil {
-		panic(err)
-	}
-	// Echo through the loggingWriter
-	_, err = io.Copy(loggingWriter{stream}, stream)
-	return err
+type packetDetails struct {
+	Lowest        uint16
+	Highest       uint16
+	ContentLength int
+	ActualLenght  int
+	Done          bool
+	Saving        bool
+	Name          string
+	mu            sync.Mutex
 }
 
-func clientMain(message, addr string) error {
-	tlsConf := &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"quic-echo-example"},
-	}
-	session, err := quic.DialAddr(addr, tlsConf, nil)
-	if err != nil {
-		return err
-	}
-
-	stream, err := session.OpenStreamSync(context.Background())
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Client: Sending '%s'\n", message)
-	_, err = stream.Write([]byte(message))
-	if err != nil {
-		return err
-	}
-
-	buf := make([]byte, len(message))
-	_, err = io.ReadFull(stream, buf)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("Client: Got '%s'\n", buf)
-
-	return nil
-}
+var packets map[string]*packetDetails
+var repairPackets map[string]*packetDetails
+var packetsAll map[uint16][]byte
+var pmu sync.Mutex
 
 var filename *string
 var bw *bufio.Writer
 
 func main() {
-	verbose := flag.Bool("v", false, "verbose")
 	quiet := flag.Bool("q", false, "don't print the data")
 	keyLogFile := flag.String("keylog", "", "key log file")
 	hostString := flag.String("h", "192.168.42.52:1234", "host string")
@@ -106,15 +63,6 @@ func main() {
 	if true {
 		urls = []string{"https://" + *hostString + "/index.m3u8", "https://" + *hostString + "/index0.ts", "https://" + *hostString + "/index1.ts", "https://" + *hostString + "/index2.ts", "https://" + *hostString + "/index3.ts", "https://" + *hostString + "/index4.ts", "https://" + *hostString + "/index5.ts", "https://" + *hostString + "/index6.ts"}
 	}
-
-	logger := utils.DefaultLogger
-
-	if *verbose {
-		logger.SetLogLevel(utils.LogLevelDebug)
-	} else {
-		logger.SetLogLevel(utils.LogLevelInfo)
-	}
-	logger.SetLogTimeFormat("")
 
 	var keyLog io.Writer
 	if len(*keyLogFile) > 0 {
@@ -179,34 +127,6 @@ func main() {
 	if false {
 		fmt.Println(hclient, urls, quiet)
 	}
-	//Can be used for faststart
-	//var wg sync.WaitGroup
-	//wg.Add(len(urls))
-	/*
-		for _, addr := range urls {
-			logger.Infof("GET %s", addr)
-			//go func(addr string) {
-			rsp, err := hclient.Get(addr)
-			if err != nil {
-				log.Fatal(err)
-			}
-			logger.Infof("Got response for %s: %#v", addr, rsp)
-
-			body := &bytes.Buffer{}
-			_, err = io.Copy(body, rsp.Body)
-			if err != nil {
-				log.Fatal(err)
-			}
-			if *quiet {
-				logger.Infof("Response Body: %d bytes", body.Len())
-			} else {
-				logger.Infof("Response Body:")
-				logger.Infof("%s", body.Bytes())
-			}
-			//wg.Done()
-			//}(addr)
-		}
-	*/
 
 	c, err := net.ListenPacket("udp4", "224.42.42.1:1235")
 	if err != nil {
@@ -233,8 +153,14 @@ func main() {
 
 	totalPackets := 0
 	totalSize := int64(0)
+	totalTransfer := 0
+	totalACKTransfer := 0
+	totalContentLenght := 0
+	totalSizeTest := 0
 
 	packets = make(map[string]*packetDetails)
+	repairPackets = make(map[string]*packetDetails)
+	packetsAll = make(map[uint16][]byte)
 	doneChan := make(chan error, 1)
 	ctx := context.Background()
 
@@ -281,24 +207,34 @@ func main() {
 			n, err := ackStr.Read(ackBuf)
 			if err != nil {
 				if err.Error() == "deadline exceeded" {
-					fmt.Println("Done with this packet for segment ", *filename)
-					saveFile(*filename)
-					ackStr.SetReadDeadline(time.Now().Add(time.Second * 120))
+					go saveRepair()
+					ackStr.SetDeadline(time.Now().Add(time.Minute * 10))
 				} else {
 					panic(err)
 				}
 			}
 
-			if ackBuf[0] == 0x33 || ackBuf[0] == 0x34 && n > 0 {
+			if (ackBuf[0]&0x33 == 0 || ackBuf[0]&0x34 == 0 || ackBuf[0] == 0x33 || ackBuf[0] == 0x34) && n > 0 {
+				fmt.Print("Read ack ", hex.EncodeToString(ackBuf[:10]), " ")
+				totalACKTransfer += n
 				ackStr.SetReadDeadline(time.Now().Add(time.Second * 1))
-				totalSize = processDataPacket(ackBuf, n, totalSize)
+				packetNumberBytes := ackBuf[1:3]
+				packetNumber := binary.LittleEndian.Uint16(packetNumberBytes)
+				pmu.Lock()
+				packetsAll[packetNumber] = []byte(string(ackBuf[3:n]))
+				pmu.Unlock()
+				//totalSize = processDataPacket(ackBuf, n, totalSize)
 			} else if n > 0 && n < 100 {
-				fmt.Println(string(ackBuf[:n]))
+				//fmt.Println(string(ackBuf[:n]))
 			}
 		}
 	}()
 
 	name := ""
+	testFile, err = os.Create("rawfiletest?" + uuid.NewString())
+	if err != nil {
+		fmt.Println("Error creating file", err)
+	}
 
 	go func() {
 
@@ -307,12 +243,12 @@ func main() {
 			n, err := l.Read(databuf)
 			if err != nil {
 				if err, ok := err.(net.Error); ok && err.Timeout() {
-					lost := checkLostPackets(packets[name], bw)
+					lost := checkLostPackets(packets[name])
 					if lost > 0 {
 						bw.Flush()
 						fmt.Println()
 					} else {
-						saveFile(name)
+						go saveFile(name)
 					}
 					fmt.Println("Lost packets #1 ", lost, " with ", name)
 					packets[name].Done = true
@@ -326,30 +262,36 @@ func main() {
 				l.SetReadDeadline(time.Now().Add(time.Millisecond * 500))
 				pn = n
 			}
+			totalTransfer += n
 			if totalPackets == 0 {
 				now = time.Now()
 			}
 			if databuf[0]&0x32 == 0 || databuf[0] == 0x32 {
-				fmt.Println("Header")
+
+				packetNumberBytes := databuf[1:3]
+				packetNumber := binary.LittleEndian.Uint16(packetNumberBytes)
+
+				fmt.Print("Header ", packetNumber, " totaltransfer ", totalTransfer, " totalACK ", totalACKTransfer, " totalsave ", totalSave, " totalContentLenght ", totalContentLenght, " ")
 				if started {
 					pPacket := packets[name]
+					fmt.Println(pPacket.Highest)
 					if !pPacket.Done {
 						fmt.Println("Packet check ", name, " L ", pPacket.ContentLength, " A ", pPacket.ActualLenght)
 
 						//Check if previously file got everything
-						lost := checkLostPackets(packets[name], bw)
-						if lost > 0 {
+						lost := checkLostPackets(packets[name])
+						if lost > 1 {
 							bw.Flush()
 							fmt.Println()
 						} else {
-							saveFile(name)
+							go saveFile(name)
 						}
 						fmt.Println("Lost packets #2 ", lost, " with ", name)
 					}
 				}
 				started = true
 
-				reader := bufio.NewReader(strings.NewReader(string(databuf[0:n]) + "\r\n"))
+				reader := bufio.NewReader(strings.NewReader(string(databuf[3:n]) + "\r\n"))
 				tp := textproto.NewReader(reader)
 
 				mimeHeader, err := tp.ReadMIMEHeader()
@@ -361,6 +303,7 @@ func main() {
 				httpHeader := http.Header(mimeHeader)
 				log.Println(httpHeader)
 				name = "video/" + httpHeader.Get("filename")
+
 				fmt.Println(name, " ", httpHeader.Get("Content-Length"))
 
 				err = ensureDir(path.Dir(name))
@@ -371,13 +314,17 @@ func main() {
 				filename = &name
 
 				contentLenght, err := strconv.Atoi(httpHeader.Get("Content-Length"))
+				totalContentLenght += contentLenght
+				highest := uint16(math.Ceil(float64(contentLenght)/float64(1439))) + packetNumber
+				fmt.Println("Highest ", highest)
+
 				packets[name] = &packetDetails{
-					Lowest:        65535,
-					Highest:       0,
+					Lowest:        packetNumber,
+					Highest:       highest,
 					ContentLength: contentLenght,
 					ActualLenght:  0,
-					All:           make(map[uint16][]byte),
 					Done:          false,
+					Saving:        false,
 					Name:          name,
 					mu:            sync.Mutex{},
 				}
@@ -385,7 +332,12 @@ func main() {
 			} else if (databuf[0] == 0x30 || databuf[0]&0x30 == 0 || databuf[0]&0x31 == 0) && started {
 				totalPackets++
 
-				totalSize = processDataPacket(databuf, pn, totalSize)
+				totalSize = processDataPacket(databuf, pn, totalSize, name)
+				written, err := testFile.Write(databuf[3:pn])
+				if err != nil {
+
+				}
+				totalSizeTest += written
 
 			} else if !started {
 				fmt.Println("first ", hex.EncodeToString(databuf[:pn]))
@@ -443,13 +395,16 @@ func main() {
 	fmt.Println("total time ", time.Now().Sub(now))
 }
 
-func processDataPacket(databuf []byte, pn int, totalSize int64) int64 {
+var totalSave = 0
+
+func processDataPacket(databuf []byte, pn int, totalSize int64, name string) int64 {
 	packetNumberBytes := databuf[1:3]
 	packetNumber := binary.LittleEndian.Uint16(packetNumberBytes)
-	name := *filename
-
+	pmu.Lock()
+	packetsAll[packetNumber] = []byte(string(databuf[3:pn]))
+	pmu.Unlock()
 	if packetNumber%100 == 0 && false {
-		lost := checkLostPackets(packets[name], bw)
+		lost := checkLostPackets(packets[name])
 		if lost > 0 {
 			fmt.Println("Lost packet during transfer ", lost)
 		}
@@ -458,9 +413,6 @@ func processDataPacket(databuf []byte, pn int, totalSize int64) int64 {
 	totalSize += int64(pn) - 3
 
 	packets[name].mu.Lock()
-	if packetNumber == 3421 {
-		fmt.Println(hex.EncodeToString(databuf[:100]))
-	}
 
 	if _, ok := packets[name]; ok {
 		if packets[name].Lowest > packetNumber {
@@ -469,29 +421,29 @@ func processDataPacket(databuf []byte, pn int, totalSize int64) int64 {
 		if packets[name].Highest < packetNumber {
 			packets[name].Highest = packetNumber
 		}
-		packets[name].All[packetNumber] = []byte(string(databuf[3:pn]))
 		packets[name].ActualLenght += pn - 3
-
 	}
 	packets[name].mu.Unlock()
 
 	return totalSize
 }
 
-func checkLostPackets(pPacket *packetDetails, bw *bufio.Writer) int {
+func checkLostPackets(pPacket *packetDetails) int {
 
 	//fmt.Println("Packet check ", pPacket.Name, " L ", pPacket.ContentLength, " A ", pPacket.ActualLenght)
 	start := pPacket.Lowest
 	lost := 0
-	name := *filename
+	total := 0
 
 	if start != 0 {
 
 		ap := make([]byte, 2)
-		packets[name].mu.Lock()
 		for i := start; i < pPacket.Highest; i++ {
-			if _, ok := pPacket.All[i]; ok {
-				//fmt.Println("duplicate packet number ", packetNumber)
+			pmu.Lock()
+			d, ok := packetsAll[i]
+			pmu.Unlock()
+			if ok {
+				total += len(d)
 			} else {
 				if lost == 0 {
 					bw.WriteByte(0x33)
@@ -501,35 +453,46 @@ func checkLostPackets(pPacket *packetDetails, bw *bufio.Writer) int {
 				bw.Write(ap)
 			}
 		}
-		packets[name].mu.Unlock()
 	} else {
 		fmt.Print("Only got packet header ")
 		//Get entire packet segment on unicast repair
 		return 0
 	}
-	if lost > 0 {
+	if pPacket.ContentLength == pPacket.ActualLenght {
+		return 0
+	}
+	fmt.Println("Lost ", lost, " min ", pPacket.Lowest, " max ", pPacket.Highest, " CL ", pPacket.ContentLength, " TOTAL ", total, " AL ", pPacket.ActualLenght)
+	if lost > 0 && lost < 30 {
+		repairPackets[pPacket.Name] = pPacket
 		bw.Flush()
 		fmt.Println("Lost ", lost, " ", pPacket.Name)
+	} else if lost == 0 {
+		bw.WriteByte(0x35)
+		bw.Flush()
 	}
 	return lost
 }
 
-type packetDetails struct {
-	Lowest        uint16
-	Highest       uint16
-	ContentLength int
-	ActualLenght  int
-	All           map[uint16][]byte
-	Done          bool
-	Name          string
-	mu            sync.Mutex
+func saveRepair() {
+	fmt.Println("Save repair ", len(repairPackets))
+	for name, p := range repairPackets {
+		lost := checkLostPackets(p)
+		if lost > 0 {
+			break
+		}
+		saveFile(name)
+		delete(repairPackets, name)
+	}
+
 }
 
-var packets map[string]*packetDetails
-
 func saveFile(name string) {
+	fmt.Println(name)
 	p := packets[name]
-	time.Sleep(time.Millisecond * 200)
+	if p.Saving {
+		return
+	}
+	p.Saving = true
 	testFile, err := os.Create(name)
 	if err != nil {
 		fmt.Println("Error creating file", err)
@@ -537,15 +500,18 @@ func saveFile(name string) {
 	total := 0
 	pack := 0
 	fmt.Println("Save file ", name, " low ", p.Lowest, " high ", p.Highest)
+	pmu.Lock()
 	for i := p.Lowest; i <= p.Highest; i++ {
-		d := p.All[i]
+		d := packetsAll[i]
 		n, err := testFile.Write(d)
 		if err != nil {
 			panic(err)
 		}
+		totalSave += n
 		total += n
 		pack++
 	}
+	pmu.Unlock()
 	testFile.Close()
 	p.Done = true
 	fmt.Println("Done saving ", name, " total ", total, " CL ", p.ContentLength, " p ", pack, " missing ", p.ContentLength-total)
@@ -558,29 +524,5 @@ func ensureDir(dirName string) error {
 		return nil
 	} else {
 		return err
-	}
-}
-
-// Setup a bare-bones TLS config for the server
-func generateTLSConfig() *tls.Config {
-	key, err := rsa.GenerateKey(rand.Reader, 1024)
-	if err != nil {
-		panic(err)
-	}
-	template := x509.Certificate{SerialNumber: big.NewInt(1)}
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
-	if err != nil {
-		panic(err)
-	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-
-	tlsCert, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		panic(err)
-	}
-	return &tls.Config{
-		Certificates: []tls.Certificate{tlsCert},
-		NextProtos:   []string{"quic-echo-example"},
 	}
 }

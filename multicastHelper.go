@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -68,14 +67,15 @@ func MultiCast(files chan string, conn *net.UDPConn, hclient *http.Client, addr 
 	for {
 		select {
 		case file := <-files:
-			fmt.Println(file)
 			mu.Lock()
+			now := time.Now()
 			success := getTest(file, bw, hclient, addr)
-			fmt.Println("Got file ", file)
 			mu.Unlock()
 			if !success {
 				fmt.Println("Big fail " + file)
 			}
+			fmt.Println("Got file ", file, " in ", time.Now().Sub(now))
+
 		default:
 		}
 
@@ -123,6 +123,7 @@ func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr)
 	//totalMulti := 0
 	totalMultiPackets := 0
 	now := time.Now()
+	bs := make([]byte, 2)
 
 	totalPackets += 1
 	packetNumber += 1
@@ -143,7 +144,6 @@ func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr)
 
 		}
 		filesize = info.Size()
-		bw.WriteByte(0x32)
 
 		split := strings.Split(file, "//")
 		filename := file
@@ -165,7 +165,11 @@ func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr)
 		header.Add("Multicast", "true")
 		header.Add("Content-Type", "text/vnd.qt.linguist; charset=utf-8")
 
+		packetNumber += 1
+
 		bw.WriteByte(0x32)
+		binary.LittleEndian.PutUint16(bs, packetNumber)
+		bw.Write(bs)
 		for name, value := range header {
 			fmt.Printf("%v: %v\n", name, value)
 			for _, v := range value {
@@ -177,10 +181,7 @@ func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr)
 		}
 
 		bw.Flush()
-		packetNumber += 1
-
-		bs := make([]byte, 2)
-		multicaster := &Multicaster{bw, bs, packetNumber}
+		multicaster := &Multicaster{bw, bs, packetNumber, 0}
 		m, err = copyBuffer(multicaster, fileStat, buf)
 		if err != nil {
 			log.Fatal(err)
@@ -192,7 +193,7 @@ func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr)
 
 		fileStat.Close()
 		//write empty packet if last packet was lost
-		for i := 0; i < 0; i++ {
+		for i := 0; i < 2; i++ {
 
 			packetNumber++
 			bw.WriteByte(0x30)
@@ -250,6 +251,8 @@ func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr)
 		mHeaderClone.Write(bw)
 
 		bw.WriteByte(0x32)
+		binary.LittleEndian.PutUint16(bs, packetNumber)
+		bw.Write(bs)
 		for name, value := range mHeaderClone {
 			fmt.Printf("%v: %v\n", name, value)
 			for _, v := range value {
@@ -261,8 +264,7 @@ func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr)
 		}
 		bw.Flush()
 
-		bs := make([]byte, 2)
-		multicaster := &Multicaster{bw, bs, packetNumber}
+		multicaster := &Multicaster{bw, bs, packetNumber, 0}
 		m, err = copyBuffer(multicaster, res.Body, buf)
 		if err != nil {
 			log.Fatal(err)
@@ -270,7 +272,7 @@ func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr)
 		}
 
 		//write empty packet if last packet was lost
-		for i := 0; i < 0; i++ {
+		for i := 0; i < 2; i++ {
 
 			packetNumber++
 			bw.WriteByte(0x30)
@@ -311,13 +313,14 @@ type Multicaster struct {
 	Pass      *bufio.Writer
 	PacketBuf []byte
 	Packet    uint16
+	rate      float64
 }
 
 func (m *Multicaster) Write(p []byte) (int, error) {
 	//var err error
 	//pt.total += int64(len(p))
 	//fmt.Println("Read", p, "bytes for a total of", pt.total)
-
+	start := time.Now()
 	m.Pass.WriteByte(0x30)
 	binary.LittleEndian.PutUint16(m.PacketBuf, m.Packet)
 
@@ -330,6 +333,9 @@ func (m *Multicaster) Write(p []byte) (int, error) {
 	pt.Packet = m.Packet
 	m.Packet += 1
 	m.Pass.Flush()
+	totaltime := time.Now().Sub(start)
+	m.rate = (float64(n) / totaltime.Seconds()) / math.Pow(10, 6)
+	time.Sleep(time.Microsecond * time.Duration(m.rate))
 
 	return n, err
 }
@@ -469,8 +475,6 @@ func (pt *PassThru) retransmit(str *bufio.Writer, number uint16) {
 	p := pt.PacketHistory[number]
 	//for i, p := range pt.PacketHistory {
 	if len(pt.PacketHistory[number]) > 0 {
-		fmt.Println("Data ", hex.EncodeToString(p[0:100]))
-		fmt.Println("Number ", number, " pn ", binary.LittleEndian.Uint16(p[1:3]))
 		p[0] = 0x34
 		str.Write(p)
 		str.Flush()
@@ -504,7 +508,6 @@ func (pt *PassThru) Read(p []byte) (int, error) {
 }
 
 func Retransmit(str *bufio.Writer, number uint16) {
-	fmt.Println("Retransmit ", number)
 
 	pt.retransmit(str, number)
 }
