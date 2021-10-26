@@ -115,6 +115,10 @@ func getTest(file string, bw *bufio.Writer, hclient *http.Client, addr net.Addr)
 	url := file
 	request := true
 
+	if packetNumber == 65535 {
+		packetNumber = 0
+	}
+
 	var totalData int64
 	totalData = 0
 	var m int64
@@ -395,11 +399,10 @@ func UnpackMulti(hdr *wire.Header, rcvTime time.Time, data []byte) (*unpackedPac
 		}
 		encLevel = protocol.Encryption1RTT
 
-		extHdr, err := unPackMultiShortHeaderPacket(hdr, rcvTime, data)
+		_, err := unPackMultiShortHeaderPacket(hdr, rcvTime, data)
 		if err != nil {
 			return nil, err
 		}
-		fmt.Println(extHdr)
 	}
 
 	return &unpackedPacket{
@@ -473,6 +476,7 @@ type PassThru struct {
 func (pt *PassThru) retransmit(str *bufio.Writer, number uint16) {
 	pt.mu.Lock()
 	p := pt.PacketHistory[number]
+	fmt.Println("Retransmit ", number)
 	//for i, p := range pt.PacketHistory {
 	if len(pt.PacketHistory[number]) > 0 {
 		p[0] = 0x34

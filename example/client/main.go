@@ -4,12 +4,10 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"math"
 	"net"
@@ -24,12 +22,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iafoosball/quic-go"
-	"github.com/iafoosball/quic-go/http3"
-	"github.com/iafoosball/quic-go/internal/testdata"
-	"github.com/iafoosball/quic-go/internal/utils"
-	"github.com/iafoosball/quic-go/logging"
-	"github.com/iafoosball/quic-go/multicast"
-	"github.com/iafoosball/quic-go/qlog"
 )
 
 type packetDetails struct {
@@ -52,90 +44,87 @@ var filename *string
 var bw *bufio.Writer
 
 func main() {
-	quiet := flag.Bool("q", false, "don't print the data")
-	keyLogFile := flag.String("keylog", "", "key log file")
 	hostString := flag.String("h", "192.168.42.52:1234", "host string")
 	multiAddr := flag.String("m", "224.42.42.1:1235", "host string")
-	insecure := flag.Bool("insecure", false, "skip certificate verification")
-	enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
-	urls := flag.Args()
-	if true {
-		urls = []string{"https://" + *hostString + "/index.m3u8", "https://" + *hostString + "/index0.ts", "https://" + *hostString + "/index1.ts", "https://" + *hostString + "/index2.ts", "https://" + *hostString + "/index3.ts", "https://" + *hostString + "/index4.ts", "https://" + *hostString + "/index5.ts", "https://" + *hostString + "/index6.ts"}
-	}
-
-	var keyLog io.Writer
-	if len(*keyLogFile) > 0 {
-		f, err := os.Create(*keyLogFile)
-		if err != nil {
-			log.Fatal(err)
+	/*
+		urls := flag.Args()
+		if true {
+			urls = []string{"https://" + *hostString + "/index.m3u8", "https://" + *hostString + "/index0.ts", "https://" + *hostString + "/index1.ts", "https://" + *hostString + "/index2.ts", "https://" + *hostString + "/index3.ts", "https://" + *hostString + "/index4.ts", "https://" + *hostString + "/index5.ts", "https://" + *hostString + "/index6.ts"}
 		}
-		defer f.Close()
-		keyLog = f
-	}
+			var keyLog io.Writer
+			if len(*keyLogFile) > 0 {
+				f, err := os.Create(*keyLogFile)
+				if err != nil {
+					log.Fatal(err)
+				}
+				defer f.Close()
+				keyLog = f
+			}
 
-	pool, err := x509.SystemCertPool()
-	if err != nil {
-		log.Fatal(err)
-	}
-	testdata.AddRootCA(pool)
-
-	var qconf quic.Config
-	if *enableQlog {
-		qconf.Tracer = qlog.NewTracer(func(_ logging.Perspective, connID []byte) io.WriteCloser {
-			filename := fmt.Sprintf("client_%x.qlog", connID)
-			f, err := os.Create(filename)
+			pool, err := x509.SystemCertPool()
 			if err != nil {
 				log.Fatal(err)
 			}
-			log.Printf("Creating qlog file %s.\n", filename)
-			return utils.NewBufferedWriteCloser(bufio.NewWriter(f), f)
-		})
-	}
+			testdata.AddRootCA(pool)
 
-	ifat, err := net.InterfaceByIndex(2)
-	if err != nil {
-		return
-	}
+			var qconf quic.Config
+			if *enableQlog {
+				qconf.Tracer = qlog.NewTracer(func(_ logging.Perspective, connID []byte) io.WriteCloser {
+					filename := fmt.Sprintf("client_%x.qlog", connID)
+					f, err := os.Create(filename)
+					if err != nil {
+						log.Fatal(err)
+					}
+					log.Printf("Creating qlog file %s.\n", filename)
+					return utils.NewBufferedWriteCloser(bufio.NewWriter(f), f)
+				})
+			}
 
-	tlsConf := &tls.Config{
-		RootCAs:            pool,
-		InsecureSkipVerify: *insecure,
-		KeyLogWriter:       keyLog,
-	}
+			ifat, err := net.InterfaceByIndex(2)
+			if err != nil {
+				return
+			}
 
-	roundTripperHttp3 := &http3.RoundTripper{
-		TLSClientConfig: tlsConf,
-		QuicConfig:      &qconf,
-	}
-	roundTripper := &multicast.RoundTripper{
-		RoundTripper: roundTripperHttp3,
-		MultiAddr:    *multiAddr,
-		Ifat:         ifat,
-		TLSClientConfig: &tls.Config{
-			RootCAs:            pool,
-			InsecureSkipVerify: *insecure,
-			KeyLogWriter:       keyLog,
-		},
-		QuicConfig: &qconf,
-	}
+			tlsConf := &tls.Config{
+				RootCAs:            pool,
+				InsecureSkipVerify: *insecure,
+				KeyLogWriter:       keyLog,
+			}
 
-	defer roundTripper.Close()
-	hclient := &http.Client{
-		Transport: roundTripper,
-	}
-	if false {
-		fmt.Println(hclient, urls, quiet)
-	}
+			roundTripperHttp3 := &http3.RoundTripper{
+				TLSClientConfig: tlsConf,
+				QuicConfig:      &qconf,
+			}
+			roundTripper := &multicast.RoundTripper{
+				RoundTripper: roundTripperHttp3,
+				MultiAddr:    *multiAddr,
+				Ifat:         ifat,
+				TLSClientConfig: &tls.Config{
+					RootCAs:            pool,
+					InsecureSkipVerify: *insecure,
+					KeyLogWriter:       keyLog,
+				},
+				QuicConfig: &qconf,
+			}
 
-	c, err := net.ListenPacket("udp4", "224.42.42.1:1235")
+			defer roundTripper.Close()
+			hclient := &http.Client{
+				Transport: roundTripper,
+			}
+			if false {
+				fmt.Println(hclient, urls, quiet)
+			}
+	*/
+
+	c, err := net.ListenPacket("udp4", *multiAddr)
 	if err != nil {
 		// error handling
 		println("Error listen unicast " + err.Error())
 	}
 	defer c.Close()
 
-	addr, err := net.ResolveUDPAddr("udp", "224.42.42.1:1235")
+	addr, err := net.ResolveUDPAddr("udp", *multiAddr)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -6,7 +6,6 @@ package quic
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/iafoosball/quic-go/internal/protocol"
@@ -55,7 +54,6 @@ func newIncomingBidiStreamsMap(
 }
 
 func (m *incomingBidiStreamsMap) AcceptStream(ctx context.Context) (streamI, error) {
-	fmt.Println("Acceptstream#2")
 	// drain the newStreamChan, so we don't check the map twice if the stream doesn't exist
 	select {
 	case <-m.newStreamChan:

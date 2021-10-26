@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -591,7 +590,9 @@ func (s *MulticastServer) handleACK(sess quic.Session, ackConn *net.UDPConn) {
 	for {
 		stream, err := sess.AcceptStream(context.Background())
 		if err != nil {
-			panic(err)
+			//s.handleACK(sess, ackConn)
+			fmt.Errorf("\nError stream %v", err)
+			return
 		} else {
 			fmt.Println("herre")
 		}
@@ -611,14 +612,15 @@ func (s *MulticastServer) handleACK(sess quic.Session, ackConn *net.UDPConn) {
 			for {
 				r, err := stream.Read(ackbuf)
 				if err != nil {
-					panic(err)
+					fmt.Println(err)
+					//s.handleACK(sess, ackConn)
+					return
 				}
-				if ackbuf[0] == 0x35 {
+				if ackbuf[0] == 0x35 || ackbuf[0]&0x35 == 0 {
 					bw.WriteByte(0x36)
 					bw.Flush()
 				}
-				if ackbuf[0] == 0x33 {
-					fmt.Println("Data from ack: ", hex.EncodeToString(ackbuf[:r]))
+				if ackbuf[0] == 0x33 && len(ackbuf) > 1 {
 
 					for i := 1; i < len(ackbuf[1:r]); i += 2 {
 						packetNumber := binary.LittleEndian.Uint16(ackbuf[i : i+2])
